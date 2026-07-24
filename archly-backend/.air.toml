@@ -1,0 +1,18 @@
+# Air hot-reload config for Go development
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server"
+  bin = "./tmp/server"
+  delay = 500
+  exclude_dir = ["tmp", "vendor", "internal/sqlc/generated"]
+  include_ext = ["go"]
+  kill_delay = "2s"
+  log = "build-errors.log"
+
+[log]
+  time = true
+
+[misc]
+  clean_on_exit = true

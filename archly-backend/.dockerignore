@@ -1,0 +1,11 @@
+tmp/
+bin/
+*.log
+.env
+.env.*
+.git
+.gitignore
+Dockerfile
+Dockerfile.dev
+coverage.out
+coverage.html

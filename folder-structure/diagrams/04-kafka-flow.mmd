@@ -1,0 +1,30 @@
+graph LR
+    subgraph Producers["Producers (apps/api/internal/handlers)"]
+        P1["designs.go\npublishes design.published"]
+        P2["designs.go\npublishes design.forked"]
+        P3["ai.go\npublishes ai.diagram_generated"]
+        P4["share.go\npublishes share.viewed"]
+        P5["realtime/hub.go\npublishes room.state_saved"]
+    end
+
+    subgraph Kafka["Kafka Broker + Zookeeper (Docker)"]
+        T1[["topic:\ndesign.published"]]
+        T2[["topic:\ndesign.forked"]]
+        T3[["topic:\nai.diagram_generated"]]
+        T4[["topic:\nshare.viewed"]]
+        T5[["topic:\nroom.state_saved"]]
+    end
+
+    subgraph Workers["Consumers (internal/workers — goroutines in main.go)"]
+        W1["analytics_worker.go\nIncrements fork + star counts in Postgres"]
+        W2["analytics_worker.go\nIncrements fork counter on source design"]
+        W3["notify_worker.go\nLogs AI usage for analytics dashboard"]
+        W4["analytics_worker.go\nIncrements share view_count in Postgres"]
+        W5["room_worker.go\nSaves canvas snapshot to collab_rooms table"]
+    end
+
+    P1 --> T1 --> W1
+    P2 --> T2 --> W2
+    P3 --> T3 --> W3
+    P4 --> T4 --> W4
+    P5 --> T5 --> W5

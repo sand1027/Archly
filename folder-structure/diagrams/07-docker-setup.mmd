@@ -1,0 +1,32 @@
+graph TB
+    subgraph DockerCompose["docker-compose.yml (Local Dev — docker compose up)"]
+        WebSvc["web service\nNext.js :3000\nVolume mount for hot reload"]
+        APISvc["api service\nGo :8080\nAir for hot reload"]
+        DBSvc["db service\nPostgreSQL :5432\nPersistent named volume"]
+        RedisSvc["redis service\n:6379\nSessions + share links + rate limit"]
+        ZKSvc["zookeeper service\n:2181\nRequired by Kafka"]
+        KafkaSvc["kafka service\n:9092 (host) :29092 (internal)\nAsync events"]
+        MigrateSvc["migrate service\nRuns goose up then exits\ndepends_on: db healthy"]
+    end
+
+    subgraph Networks["Internal Docker Network"]
+        Net["paperdraw-network\nAll services communicate\nby service name (not localhost)"]
+    end
+
+    subgraph Volumes["Named Volumes"]
+        PGVol["postgres_data\nDB persists between restarts"]
+        KafkaVol["kafka_data\nKafka logs persist"]
+        RedisVol["redis_data\nRedis AOF persistence"]
+    end
+
+    WebSvc -->|"http://api:8080"| APISvc
+    APISvc -->|"postgres://db:5432"| DBSvc
+    APISvc -->|"redis://redis:6379"| RedisSvc
+    APISvc -->|"kafka:29092"| KafkaSvc
+    KafkaSvc -->|"zookeeper:2181"| ZKSvc
+    MigrateSvc -->|"runs migrations on"| DBSvc
+
+    DockerCompose --> Networks
+    DBSvc --> PGVol
+    KafkaSvc --> KafkaVol
+    RedisSvc --> RedisVol

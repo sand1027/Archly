@@ -1,0 +1,30 @@
+graph TB
+    subgraph Frontend["Browser A + Browser B (apps/web)"]
+        ClientA["useCollaboration.ts (A)\nws-client.ts → WebSocket connection"]
+        ClientB["useCollaboration.ts (B)\nws-client.ts → WebSocket connection"]
+    end
+
+    subgraph WSLayer["WebSocket Layer (apps/api/internal/realtime)"]
+        Hub["hub.go\nrooms: sync.Map\nroom_id → *Room\nthread-safe"]
+        RoomObj["Room struct\nclients: map[*Client]bool\nstate: []byte (current canvas)"]
+        ClientConn["client.go\nOne goroutine per connection\nreadPump() + writePump()"]
+    end
+
+    subgraph Redis["Redis (Pub/Sub)"]
+        Channel["Channel: room:{id}\nBroadcast across multiple API instances"]
+    end
+
+    subgraph MessageTypes["Message Types (message.go)"]
+        M1["type: element_update\npayload: ExcalidrawElement[]"]
+        M2["type: cursor_move\npayload: {userId, x, y, color}"]
+        M3["type: user_join\npayload: {userId, displayName, color}"]
+        M4["type: user_leave\npayload: {userId}"]
+        M5["type: full_state\npayload: full canvas state on join"]
+    end
+
+    ClientA -->|"WS connect"| Hub
+    ClientB -->|"WS connect"| Hub
+    Hub --> RoomObj --> ClientConn
+    ClientConn --> Redis
+    Redis --> ClientConn
+    ClientConn --> MessageTypes

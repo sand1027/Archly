@@ -1,0 +1,159 @@
+package config
+
+import (
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/joho/godotenv"
+)
+
+// Config holds all runtime configuration loaded from environment variables.
+type Config struct {
+	// Server
+	Port        string
+	Environment string
+	CORSOrigins []string
+
+	// Database
+	DatabaseURL string
+
+	// Redis
+	RedisURL string
+
+	// Kafka
+	KafkaBrokers []string
+
+	// JWT
+	JWTSecret     string
+	JWTAccessTTL  time.Duration
+	JWTRefreshTTL time.Duration
+
+	// AI — Gemini (primary)
+	GeminiAPIKey string
+	GeminiModel  string
+
+	// AI — OpenRouter (fallback)
+	OpenRouterAPIKey string
+	OpenRouterModel  string
+
+	// Payments
+	StripeSecretKey      string
+	StripeWebhookSecret  string
+	PayPalClientID       string
+	PayPalClientSecret   string
+}
+
+// Load reads configuration from environment variables.
+// Loads .env file if present (ignored in production where real env vars are set).
+func Load() (*Config, error) {
+	// Load .env if it exists — ignored if missing
+	_ = godotenv.Load()
+
+	cfg := &Config{
+		Port:        getEnv("PORT", "8080"),
+		Environment: getEnv("ENVIRONMENT", "development"),
+		DatabaseURL: getEnv("DATABASE_URL", ""),
+		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
+		GeminiModel:          getEnv("GEMINI_MODEL", "gemini-2.0-flash"),
+		GeminiAPIKey:         getEnv("GEMINI_API_KEY", ""),
+		OpenRouterAPIKey:     getEnv("OPENROUTER_API_KEY", ""),
+		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
+		StripeSecretKey:       getEnv("STRIPE_SECRET_KEY", ""),
+		StripeWebhookSecret:   getEnv("STRIPE_WEBHOOK_SECRET", ""),
+		PayPalClientID:        getEnv("PAYPAL_CLIENT_ID", ""),
+		PayPalClientSecret:    getEnv("PAYPAL_CLIENT_SECRET", ""),
+	}
+
+	// CORS origins — comma separated
+	origins := getEnv("CORS_ORIGINS", "http://localhost:3000")
+	cfg.CORSOrigins = splitTrim(origins, ",")
+
+	// Kafka brokers — comma separated
+	brokers := getEnv("KAFKA_BROKERS", "localhost:9092")
+	cfg.KafkaBrokers = splitTrim(brokers, ",")
+
+	// JWT secret — required
+	cfg.JWTSecret = getEnv("JWT_SECRET", "")
+	if cfg.JWTSecret == "" {
+		return nil, fmt.Errorf("JWT_SECRET is required")
+	}
+	if len(cfg.JWTSecret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 characters")
+	}
+
+	// JWT TTLs
+	var err error
+	cfg.JWTAccessTTL, err = parseDuration(getEnv("JWT_ACCESS_TTL", "15m"))
+	if err != nil {
+		return nil, fmt.Errorf("JWT_ACCESS_TTL: %w", err)
+	}
+	cfg.JWTRefreshTTL, err = parseDuration(getEnv("JWT_REFRESH_TTL", "168h")) // 7 days
+	if err != nil {
+		return nil, fmt.Errorf("JWT_REFRESH_TTL: %w", err)
+	}
+
+	// Database URL — required
+	if cfg.DatabaseURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL is required")
+	}
+
+	return cfg, nil
+}
+
+// IsDev returns true when running in development mode.
+func (c *Config) IsDev() bool {
+	return c.Environment == "development"
+}
+
+// IsProd returns true when running in production mode.
+func (c *Config) IsProd() bool {
+	return c.Environment == "production"
+}
+
+// ─── helpers ──────────────────────────────────────────────────────────────
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	if v := os.Getenv(key); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return fallback
+}
+
+func splitTrim(s, sep string) []string {
+	parts := strings.Split(s, sep)
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if t := strings.TrimSpace(p); t != "" {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// parseDuration parses "15m", "7d", "168h", "24h" etc.
+// Adds support for "d" (days) which Go's time.ParseDuration doesn't support.
+func parseDuration(s string) (time.Duration, error) {
+	if strings.HasSuffix(s, "d") {
+		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
+		if err != nil {
+			return 0, fmt.Errorf("invalid duration %q", s)
+		}
+		return time.Duration(days) * 24 * time.Hour, nil
+	}
+	return time.ParseDuration(s)
+}
+
+// Ensure getEnvInt is used (suppress lint warning)
+var _ = getEnvInt

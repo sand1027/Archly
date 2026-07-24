@@ -1,0 +1,64 @@
+# ─── Environment files — NEVER commit these ───────────────────
+.env
+.env.local
+.env.development
+.env.production
+.env.staging
+.env.test
+*.env
+
+# ─── macOS ────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+
+# ─── Go ───────────────────────────────────────────────────────
+archly-backend/tmp/
+archly-backend/*.exe
+archly-backend/*.out
+archly-backend/bin/
+archly-backend/vendor/
+*.test
+*.prof
+
+# ─── Node / Next.js ───────────────────────────────────────────
+archly-frontend/node_modules/
+archly-frontend/.next/
+archly-frontend/out/
+archly-frontend/build/
+archly-frontend/.pnp
+archly-frontend/.pnp.*
+archly-frontend/.yarn/*
+!archly-frontend/.yarn/patches
+!archly-frontend/.yarn/plugins
+!archly-frontend/.yarn/releases
+!archly-frontend/.yarn/versions
+archly-frontend/npm-debug.log*
+archly-frontend/yarn-debug.log*
+archly-frontend/yarn-error.log*
+archly-frontend/.pnpm-debug.log*
+archly-frontend/coverage/
+archly-frontend/*.tsbuildinfo
+archly-frontend/next-env.d.ts
+archly-frontend/.vercel
+
+# ─── Docker ───────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ─── Editor / IDE ─────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ─── Logs ─────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── Secrets / certs ──────────────────────────────────────────
+*.pem
+*.key
+*.crt
+*.p12

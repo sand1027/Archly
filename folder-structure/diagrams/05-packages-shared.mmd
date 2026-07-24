@@ -1,0 +1,19 @@
+graph TD
+    Packages["packages/\nShared across apps"]
+
+    Packages --> Types["types/\nShared TypeScript types"]
+    Packages --> Codegen["codegen/\nOpenAPI codegen config"]
+
+    Types --> TypesSrc["src/\nindex.ts — re-exports all generated types"]
+    Types --> TypesGen["generated/\napi.ts — auto-generated from openapi.yaml\nDO NOT EDIT"]
+    Types --> TypesConfig["package.json\ntsconfig.json\nname: @paperdraw/types"]
+
+    Codegen --> CodegenFile["openapi-ts.config.ts\ninput: apps/api/openapi/openapi.yaml\noutput: packages/types/generated/api.ts"]
+    Codegen --> CodegenPkg["package.json\nRuns openapi-typescript"]
+
+    subgraph Flow["Codegen Pipeline (scripts/codegen.sh)"]
+        S1["1. make swagger\nin apps/api\nswaggo generates openapi.yaml"] --> S2["2. openapi.yaml\nin apps/api/openapi/"]
+        S2 --> S3["3. npm run generate\nin packages/codegen\nopenapi-typescript runs"]
+        S3 --> S4["4. api.ts\nin packages/types/generated/\nfully typed interfaces"]
+        S4 --> S5["5. apps/web imports @paperdraw/types\nTypeScript knows all request/response shapes"]
+    end

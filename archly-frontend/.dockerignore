@@ -1,0 +1,31 @@
+# Dependencies — reinstalled inside the container
+node_modules
+.npm
+
+# Next.js build output — built inside the container
+.next
+out
+
+# Dev / editor artifacts
+.DS_Store
+*.log
+npm-debug.log*
+.env*.local
+.env.development
+.env.test
+
+# Git
+.git
+.gitignore
+
+# Docker files themselves
+Dockerfile
+Dockerfile.dev
+docker-compose*.yml
+
+# Type-check / lint caches
+.tsbuildinfo
+.eslintcache
+
+# Test output
+coverage

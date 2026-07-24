@@ -1,0 +1,220 @@
+networks:
+  archly-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  kafka_data:
+  zookeeper_data:
+  redis_data:
+
+services:
+  # ─── PostgreSQL ───────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: archly-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: archly
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - archly-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d archly"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ─── Redis ────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: archly-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - archly-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ─── Zookeeper (required by Kafka) ───────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: archly-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - archly-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "zookeeper-shell localhost:2181 ls / > /dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ─── Kafka ────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: archly-kafka
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - archly-network
+    healthcheck:
+      test: ["CMD", "bash", "-c", "kafka-topics --bootstrap-server localhost:9092 --list > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # ─── Kafka Topic Setup ────────────────────────────────────────
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: archly-kafka-setup
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - archly-network
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      echo 'Creating Kafka topics...'
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic design.published    --partitions 3 --replication-factor 1 --config retention.ms=604800000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic design.forked       --partitions 3 --replication-factor 1 --config retention.ms=604800000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic ai.diagram_generated --partitions 1 --replication-factor 1 --config retention.ms=259200000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic share.viewed        --partitions 2 --replication-factor 1 --config retention.ms=86400000
+      kafka-topics --bootstrap-server kafka:29092 --create --if-not-exists --topic room.state_saved    --partitions 3 --replication-factor 1 --config retention.ms=86400000
+      echo 'Topics created:'
+      kafka-topics --bootstrap-server kafka:29092 --list
+      "
+    restart: on-failure
+
+  # ─── Database Migrations ──────────────────────────────────────
+  migrate:
+    # Uses goose (not golang-migrate) because our SQL files have goose annotations.
+    # Downloads goose once, runs all Up migrations, then exits.
+    image: golang:1.23-alpine
+    container_name: archly-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./archly-backend/internal/db/migrations:/migrations
+    environment:
+      GOPATH: /tmp/go
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "go install github.com/pressly/goose/v3/cmd/goose@v3.21.1 && /tmp/go/bin/goose -dir /migrations postgres 'postgresql://postgres:password@db:5432/archly?sslmode=disable' up"
+    networks:
+      - archly-network
+    restart: on-failure
+
+  # ─── Go API ───────────────────────────────────────────────────
+  api:
+    build:
+      context: ./archly-backend
+      dockerfile: Dockerfile.dev
+    container_name: archly-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      kafka-setup:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://postgres:password@db:5432/archly?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      KAFKA_BROKERS: kafka:29092
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-change-in-production-min-32-chars}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-7d}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-inclusionai/ling-3.0-flash:free}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PORT: 8080
+      ENVIRONMENT: development
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount source for Air hot-reload (Go)
+      - ./archly-backend:/app
+    networks:
+      - archly-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  # ─── Next.js Frontend ─────────────────────────────────────────
+  web:
+    build:
+      context: ./archly-frontend
+      dockerfile: Dockerfile.dev
+    container_name: archly-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      # Use the Docker service name so browser→API calls work inside compose
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      NEXT_PUBLIC_WS_URL: ws://localhost:8080
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      # Mount src/ for hot-reload — node_modules and .next stay in the image
+      - ./archly-frontend/src:/app/src
+      - ./archly-frontend/public:/app/public
+      - ./archly-frontend/next.config.ts:/app/next.config.ts
+      - /app/node_modules
+      - /app/.next
+    networks:
+      - archly-network

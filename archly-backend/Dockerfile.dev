@@ -1,0 +1,23 @@
+# ── Development image with Air hot-reload ─────────────────────────────────
+FROM golang:1.26-alpine AS dev
+
+RUN apk add --no-cache git
+
+# Install Air for hot-reload
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /app
+
+# Cache dependencies
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Source is mounted as a volume — this COPY is a fallback for standalone runs
+COPY . .
+
+EXPOSE 8080
+
+ENV CGO_ENABLED=0
+ENV GOOS=linux
+
+CMD ["air", "-c", ".air.toml"]

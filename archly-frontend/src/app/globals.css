@@ -1,0 +1,453 @@
+@import "tailwindcss";
+
+/* ─── Fonts ──────────────────────────────────────────────────────────────── */
+@font-face {
+  font-family: "Assistant";
+  src: url("https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Regular.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Assistant";
+  src: url("https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Medium.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Assistant";
+  src: url("https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-SemiBold.woff2") format("woff2");
+  font-weight: 600; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "Assistant";
+  src: url("https://excalidraw.nyc3.cdn.digitaloceanspaces.com/oss/fonts/Assistant/Assistant-Bold.woff2") format("woff2");
+  font-weight: 700; font-style: normal; font-display: swap;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — LIGHT MODE
+   ═══════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* ── Backgrounds ── */
+  --pd-bg:             #f8f8fa;
+  --pd-bg-subtle:      #f2f2f5;
+  --pd-bg-muted:       #eaeaef;
+  --pd-surface:        #ffffff;
+  --pd-surface-raised: #ffffff;
+  --pd-overlay:        rgba(15, 15, 20, 0.5);
+
+  /* ── Borders ── */
+  --pd-border:         #e2e2e8;
+  --pd-border-strong:  #c8c8d2;
+
+  /* ── Text ── */
+  --pd-text:           #111118;
+  --pd-text-muted:     #6b6b7a;
+  --pd-text-subtle:    #9999aa;
+  --pd-text-inverse:   #ffffff;
+
+  /* ── Brand (indigo) ── */
+  --pd-brand:          #5b5ef4;
+  --pd-brand-hover:    #4346e0;
+  --pd-brand-subtle:   #eef0ff;
+  --pd-brand-text:     #3336c8;
+
+  /* ── Simulation ── */
+  --pd-sim-packet:     #5b5ef4;
+  --pd-sim-error:      #e53e3e;
+  --pd-sim-warn:       #d97706;
+  --pd-sim-ok:         #16a34a;
+  --pd-sim-bottleneck: #ea6c00;
+
+  /* ── Chaos colours ── */
+  --pd-chaos-crash:     #e53e3e;
+  --pd-chaos-slow:      #d97706;
+  --pd-chaos-surge:     #7c3aed;
+  --pd-chaos-partition: #db2777;
+  --pd-chaos-throttle:  #ea6c00;
+  --pd-chaos-canary:    #0891b2;
+  --pd-chaos-zero:      #6b7280;
+
+  /* ── Chrome ── */
+  --pd-toolbar-bg:        #ffffff;
+  --pd-toolbar-border:    #e2e2e8;
+  --pd-sidebar-bg:        #fafafc;
+  --pd-sidebar-border:    #e2e2e8;
+  --pd-sidebar-width:     256px;
+  --pd-right-panel-width: 276px;
+  --pd-toolbar-height:    48px;
+  --pd-simbar-height:     52px;
+
+  /* ── Radius ── */
+  --pd-radius-xs:   3px;
+  --pd-radius-sm:   5px;
+  --pd-radius:      8px;
+  --pd-radius-lg:   12px;
+  --pd-radius-xl:   16px;
+  --pd-radius-2xl:  20px;
+  --pd-radius-full: 9999px;
+
+  /* ── Shadows ── */
+  --pd-shadow-sm: 0 1px 3px rgba(0,0,0,0.07), 0 1px 2px rgba(0,0,0,0.04);
+  --pd-shadow:    0 4px 12px rgba(0,0,0,0.08), 0 1px 3px rgba(0,0,0,0.05);
+  --pd-shadow-lg: 0 12px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.06);
+  --pd-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.8);
+
+  /* ── Z-index ── */
+  --pd-z-toolbar:        100;
+  --pd-z-sidebar:        90;
+  --pd-z-panel:          95;
+  --pd-z-simbar:         100;
+  --pd-z-modal:          200;
+  --pd-z-toast:          300;
+  --pd-z-canvas-overlay: 10;
+
+  /* ── Transitions ── */
+  --pd-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --pd-duration: 150ms;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — DARK MODE (system preference)
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --pd-bg:             #0d0d10;
+    --pd-bg-subtle:      #14141a;
+    --pd-bg-muted:       #1e1e26;
+    --pd-surface:        #18181f;
+    --pd-surface-raised: #222230;
+    --pd-overlay:        rgba(0, 0, 0, 0.7);
+
+    --pd-border:         #2e2e3d;
+    --pd-border-strong:  #44445a;
+
+    --pd-text:           #f0f0f8;
+    --pd-text-muted:     #8888a0;
+    --pd-text-subtle:    #55556a;
+    --pd-text-inverse:   #0d0d10;
+
+    --pd-brand:          #7b7ef8;
+    --pd-brand-hover:    #9a9dff;
+    --pd-brand-subtle:   #1a1a40;
+    --pd-brand-text:     #b0b3ff;
+
+    --pd-toolbar-bg:     #18181f;
+    --pd-toolbar-border: #2e2e3d;
+    --pd-sidebar-bg:     #14141a;
+    --pd-sidebar-border: #2e2e3d;
+
+    --pd-shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --pd-shadow:    0 4px 12px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+    --pd-shadow-lg: 0 12px 40px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+    --pd-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DESIGN TOKENS — DARK MODE (.dark class toggle)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.dark {
+  --pd-bg:             #0d0d10;
+  --pd-bg-subtle:      #14141a;
+  --pd-bg-muted:       #1e1e26;
+  --pd-surface:        #18181f;
+  --pd-surface-raised: #222230;
+  --pd-overlay:        rgba(0, 0, 0, 0.7);
+
+  --pd-border:         #2e2e3d;
+  --pd-border-strong:  #44445a;
+
+  --pd-text:           #f0f0f8;
+  --pd-text-muted:     #8888a0;
+  --pd-text-subtle:    #55556a;
+  --pd-text-inverse:   #0d0d10;
+
+  --pd-brand:          #7b7ef8;
+  --pd-brand-hover:    #9a9dff;
+  --pd-brand-subtle:   #1a1a40;
+  --pd-brand-text:     #b0b3ff;
+
+  --pd-toolbar-bg:     #18181f;
+  --pd-toolbar-border: #2e2e3d;
+  --pd-sidebar-bg:     #14141a;
+  --pd-sidebar-border: #2e2e3d;
+
+  --pd-shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+  --pd-shadow:    0 4px 12px rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.3);
+  --pd-shadow-lg: 0 12px 40px rgba(0,0,0,0.5), 0 4px 12px rgba(0,0,0,0.4);
+  --pd-shadow-inset: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE RESET
+   ═══════════════════════════════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  height: 100%;
+  background: var(--pd-bg);
+  color: var(--pd-text);
+  font-family: "Assistant", system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  transition: background var(--pd-duration) var(--pd-ease),
+              color var(--pd-duration) var(--pd-ease);
+}
+
+#__next, main { height: 100%; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CANVAS LAYOUT
+   ═══════════════════════════════════════════════════════════════════════════ */
+.canvas-page {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--pd-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   EXCALIDRAW INTEGRATION
+   ═══════════════════════════════════════════════════════════════════════════ */
+.excalidraw-container {
+  position: absolute;
+  inset: 0;
+}
+
+.excalidraw,
+.excalidraw-container {
+  --ui-font: "Assistant", system-ui, sans-serif;
+}
+
+.excalidraw canvas {
+  pointer-events: all;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GLOBAL SVG RESET
+   Prevents SVG <path> data from rendering as visible text when overflow
+   is not clipped — causes the "M 2 0 01-..." corruption in panels.
+   ═══════════════════════════════════════════════════════════════════════════ */
+svg {
+  overflow: hidden;
+  display: block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PANEL / SIDEBAR ISOLATION
+   Prevents Excalidraw's CSS custom properties and stacking contexts from
+   leaking into our sidebar panels.
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pd-panel-isolate {
+  isolation: isolate;
+  position: relative;
+  z-index: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SCROLLBAR
+   ═══════════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--pd-border-strong);
+  border-radius: var(--pd-radius-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--pd-text-subtle); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FOCUS
+   ═══════════════════════════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid var(--pd-brand);
+  outline-offset: 2px;
+  border-radius: var(--pd-radius-sm);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   UTILITIES
+   ═══════════════════════════════════════════════════════════════════════════ */
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════════════════════ */
+@keyframes packet-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(1.4); }
+}
+@keyframes slide-in-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(91, 94, 244, 0.4); }
+  70%  { box-shadow: 0 0 0 6px rgba(91, 94, 244, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(91, 94, 244, 0); }
+}
+/* Packet travels along a CSS motion-path (offsetDistance 0% → 100%) */
+@keyframes flow-packet {
+  0%   { offset-distance: 0%; opacity: 0; }
+  5%   { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+.packet-dot { animation: packet-pulse 0.9s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   CHAOS PILLS
+   ═══════════════════════════════════════════════════════════════════════════ */
+.sim-chaos-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: var(--pd-radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  transition: opacity var(--pd-duration) var(--pd-ease),
+              transform var(--pd-duration) var(--pd-ease);
+}
+.sim-chaos-pill:hover { transform: translateY(-1px); }
+
+.sim-chaos-pill--crash     { background: var(--pd-chaos-crash);     color: #fff; }
+.sim-chaos-pill--slow      { background: var(--pd-chaos-slow);      color: #fff; }
+.sim-chaos-pill--surge     { background: var(--pd-chaos-surge);     color: #fff; }
+.sim-chaos-pill--partition { background: var(--pd-chaos-partition); color: #fff; }
+.sim-chaos-pill--throttle  { background: var(--pd-chaos-throttle);  color: #fff; }
+.sim-chaos-pill--canary    { background: var(--pd-chaos-canary);    color: #fff; }
+.sim-chaos-pill--zero      { background: var(--pd-chaos-zero);      color: #fff; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   INTERVIEW MODE (imd-*)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.imd-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--pd-overlay);
+  z-index: var(--pd-z-modal);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 200ms var(--pd-ease);
+  backdrop-filter: blur(4px);
+}
+
+.imd-modal {
+  background: var(--pd-surface);
+  border: 1px solid var(--pd-border);
+  border-radius: var(--pd-radius-2xl);
+  box-shadow: var(--pd-shadow-lg);
+  width: min(680px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  animation: slide-in-up 240ms var(--pd-ease);
+}
+
+.imd-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--pd-radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--pd-bg-muted);
+  color: var(--pd-text-muted);
+  border: 1px solid var(--pd-border);
+}
+
+.imd-problem-row--active {
+  background: var(--pd-brand-subtle) !important;
+  border-color: var(--pd-brand) !important;
+}
+
+.imd-filter-chip--active,
+.imd-duration-chip--active {
+  background: var(--pd-brand) !important;
+  color: #fff !important;
+  border-color: var(--pd-brand) !important;
+}
+
+.imd-diff-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SHARED UI PATTERNS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Glass surface for floating panels */
+.pd-glass {
+  background: color-mix(in srgb, var(--pd-surface) 92%, transparent);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+/* Subtle section divider label */
+.pd-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--pd-text-subtle);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FORM CONTROLS (used in PropertiesPanel)
+   ═══════════════════════════════════════════════════════════════════════════ */
+.pd-input {
+  width: 100%;
+  padding: 5px 9px;
+  border-radius: var(--pd-radius-sm);
+  border: 1px solid var(--pd-border);
+  background: var(--pd-bg-subtle);
+  color: var(--pd-text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--pd-duration) var(--pd-ease),
+              background var(--pd-duration) var(--pd-ease);
+}
+.pd-input:focus {
+  border-color: var(--pd-brand);
+  background: var(--pd-surface);
+}
+.pd-input::placeholder { color: var(--pd-text-subtle); }
+
+.pd-select {
+  width: 100%;
+  padding: 5px 24px 5px 9px;
+  border-radius: var(--pd-radius-sm);
+  border: 1px solid var(--pd-border);
+  background: var(--pd-bg-subtle);
+  color: var(--pd-text);
+  font-family: inherit;
+  font-size: 12px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238888a0'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  transition: border-color var(--pd-duration) var(--pd-ease);
+}
+.pd-select:focus { border-color: var(--pd-brand); }

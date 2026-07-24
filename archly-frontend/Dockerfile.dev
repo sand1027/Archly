@@ -1,0 +1,38 @@
+# ─── Development image ────────────────────────────────────────────────────
+# Hot-reload via `next dev`. Source is mounted as a volume so edits on the
+# host are reflected instantly without rebuilding the image.
+#
+# Usage (standalone):
+#   docker build -f Dockerfile.dev -t archly-frontend:dev .
+#   docker run -p 3000:3000 -v $(pwd)/src:/app/src archly-frontend:dev
+#
+# Usage (via docker-compose):
+#   docker compose up web
+
+FROM node:20-alpine AS dev
+
+# Install libc compat for Alpine (needed by some native Node deps)
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /app
+
+# Copy manifests first — layer-cached if they haven't changed
+COPY package.json package-lock.json ./
+
+# Install all dependencies (including devDependencies for type-checking)
+RUN npm ci
+
+# Copy the rest of the source
+# In docker-compose the src/ directory is mounted over this, so changes
+# on the host are reflected live. The COPY here is a fallback for
+# standalone docker build / run scenarios.
+COPY . .
+
+# Next.js dev server port
+EXPOSE 3000
+
+# Disable Next.js telemetry inside containers
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=development
+
+CMD ["npm", "run", "dev"]

@@ -1,0 +1,21 @@
+graph TD
+    Root["paperdraw/\nMonorepo Root"]
+
+    Root --> Apps["apps/\nRunnable applications"]
+    Root --> Packages["packages/\nShared code and tools"]
+    Root --> Architecture["architecture/\nSystem diagrams (Mermaid + PNG)"]
+    Root --> FolderStructure["folder-structure/\nThis documentation"]
+    Root --> Scripts["scripts/\ncodegen.sh / migrate.sh / seed.sh / topics.sh"]
+    Root --> GH[".github/\nCI/CD workflows"]
+    Root --> DC["docker-compose.yml\nFull local dev — 7 services"]
+    Root --> DCDev["docker-compose.dev.yml\nDev overrides (volume mounts)"]
+    Root --> Env[".env.example\nEnvironment variable template"]
+    Root --> Turbo["turbo.json\nTurborepo pipeline config"]
+    Root --> PkgJson["package.json\nNPM workspaces root"]
+    Root --> Readme["README.md\nProject overview + quick start"]
+
+    Apps --> Web["web/\nNext.js 14 Frontend"]
+    Apps --> API["api/\nGo REST Backend"]
+
+    Packages --> Types["types/\nShared TypeScript types (generated)"]
+    Packages --> Codegen["codegen/\nOpenAPI → TS codegen config"]

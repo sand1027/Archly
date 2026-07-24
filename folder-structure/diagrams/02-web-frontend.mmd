@@ -1,0 +1,36 @@
+graph TD
+    Web["apps/web/\nNext.js 14 Frontend"]
+
+    Web --> Public["public/\nStatic assets (logo, favicon, og-image)"]
+    Web --> Src["src/\nAll source code"]
+    Web --> WebConfig["next.config.ts\ntailwind.config.ts\ntsconfig.json\npackage.json\nDockerfile"]
+
+    Src --> App["app/\nNext.js App Router (pages + layouts)"]
+    Src --> Components["components/\nReusable UI pieces"]
+    Src --> Hooks["hooks/\nCustom React hooks"]
+    Src --> Lib["lib/\nUtilities, helpers, registries"]
+    Src --> Providers["providers/\nContext providers"]
+    Src --> Store["store/\nZustand state stores"]
+    Src --> SrcTypes["types/\nLocal TypeScript types + generated"]
+
+    App --> Layout["layout.tsx\nRoot layout (ThemeProvider + QueryProvider + AuthProvider)"]
+    App --> CanvasGroup["(canvas)/\npage.tsx — Main canvas page"]
+    App --> Community["community/\npage.tsx — Design gallery\n[id]/page.tsx — Design detail"]
+    App --> Interview["interview/\npage.tsx — Problem picker\n[problemId]/page.tsx — Timed session"]
+    App --> Share["share/\n[id]/page.tsx — Shared canvas (read-only)"]
+    App --> Login["login/\npage.tsx — Auth page"]
+
+    Components --> Canvas["canvas/\nExcalidrawWrapper.tsx\nToolbar.tsx\nComponentPalette.tsx\nPropertiesPanel.tsx\nSimulationBar.tsx"]
+    Components --> Simulation["simulation/\nSimulationEngine.tsx\nPacketAnimator.tsx\nMetricsDisplay.tsx\nChaosPanel.tsx"]
+    Components --> Mermaid["mermaid/\nMermaidEditor.tsx\nMermaidToCanvas.tsx"]
+    Components --> Community2["community/\nDesignCard.tsx\nDesignGallery.tsx"]
+    Components --> Interview2["interview/\nInterviewTimer.tsx\nProblemPanel.tsx"]
+    Components --> UI["ui/\nbutton, input, badge, card\ndialog, tabs, tooltip, dropdown"]
+
+    Hooks --> HookFiles["useSimulation.ts\nuseCollaboration.ts\nuseDesigns.ts\nuseDesign.ts\nuseAuth.ts"]
+
+    Lib --> LibFiles["api/\n  client.ts — typed fetch wrapper\n  ws-client.ts — WebSocket client\nsimulation/\n  engine.ts\n  chaos.ts\n  metrics.ts\n  scenarios.ts\ncomponents-registry.ts\nmermaid-to-canvas.ts\npresets.ts\nconstants.ts"]
+
+    Store --> StoreFiles["canvas.store.ts\nsimulation.store.ts\nauth.store.ts"]
+
+    Providers --> ProviderFiles["auth-provider.tsx\nquery-provider.tsx\ntheme-provider.tsx"]

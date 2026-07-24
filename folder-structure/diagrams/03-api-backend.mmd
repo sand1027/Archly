@@ -1,0 +1,24 @@
+graph TD
+    API["apps/api/\nGo REST Backend"]
+
+    API --> Cmd["cmd/server/\nmain.go — entrypoint"]
+    API --> Internal["internal/\nAll private application code"]
+    API --> Migrations["internal/db/migrations/\nSQL migration files (goose)"]
+    API --> Sqlc["sqlc/\nSQL queries + generated Go code"]
+    API --> Openapi["openapi/\nopenapi.yaml — API contract (swaggo)"]
+    API --> APIConfig["go.mod\ngo.sum\nMakefile\nDockerfile\nDockerfile.dev\n.air.toml\nsqlc.yaml\nswagger.go"]
+
+    Internal --> Config["config/\nconfig.go — env vars loader"]
+    Internal --> DB["db/\npostgres.go — pgx connection pool"]
+    Internal --> Cache["cache/\nredis.go — Redis client + helpers"]
+    Internal --> Middleware["middleware/\nauth.go\ncors.go\nlogger.go\nratelimit.go"]
+    Internal --> APILayer["api/\nrouter.go — Chi route registration\nhandlers/\n  auth.go\n  designs.go\n  share.go\n  ai.go\n  health.go"]
+    Internal --> Realtime["realtime/\nhub.go — WebSocket room registry\nclient.go — per-connection goroutine\nmessage.go — typed WS message structs"]
+    Internal --> KafkaLayer["kafka/\nproducer.go\nconsumer.go\ntopics.go"]
+    Internal --> Workers["workers/\nanalytics_worker.go\nnotify_worker.go\nroom_worker.go"]
+    Internal --> Services["services/\nauth.go — bcrypt + JWT\ndesigns.go — CRUD + fork + star\nshare.go — slug gen + Redis\nai.go — SSE proxy"]
+    Internal --> Models["models/\nuser.go\ndesign.go\nroom.go\nevent.go"]
+
+    Sqlc --> SqlcConfig["sqlc.yaml\ncodegen config"]
+    Sqlc --> Queries["queries/\nusers.sql\ndesigns.sql\nshare_links.sql\ncollab_rooms.sql"]
+    Sqlc --> Generated["generated/\ndb.go\nmodels.go\n*.sql.go\n(DO NOT EDIT — sqlc output)"]

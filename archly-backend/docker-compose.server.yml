@@ -1,0 +1,114 @@
+# ── Archly API — home server deployment ───────────────────────────────────
+#
+# Assumes your home server already has:
+#   - postgres   container on the "backend" network  (port 5432)
+#   - redis      container on the "backend" network  (port 6379)
+#   - proxy      external network managed by Nginx Proxy Manager
+#   - backend    external network shared by all apps/databases
+#
+# Steps:
+#   1. Copy this file + .env.example to the server
+#   2. cp .env.example .env && fill in secrets
+#   3. docker compose -f docker-compose.server.yml up -d
+#   4. Add a proxy host in Nginx Proxy Manager pointing to archly-api:8080
+# --------------------------------------------------------------------------
+
+networks:
+  proxy:
+    external: true    # Nginx Proxy Manager network
+  backend:
+    external: true    # shared backend network (postgres + redis live here)
+
+volumes:
+  zookeeper_data:
+  kafka_data:
+
+services:
+
+  # ── Zookeeper ─────────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: archly-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - backend
+
+  # ── Kafka ─────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: archly-kafka
+    restart: unless-stopped
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: archly-zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://archly-kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - backend
+
+  # ── Kafka topic setup (runs once then exits) ──────────────────────────
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: archly-kafka-setup
+    restart: on-failure
+    depends_on:
+      - kafka
+    entrypoint: ["/bin/bash", "-c"]
+    command: >
+      "sleep 15 &&
+      kafka-topics --create --if-not-exists --bootstrap-server archly-kafka:9092 --topic ai.diagram_generated --partitions 3 --replication-factor 1 &&
+      kafka-topics --create --if-not-exists --bootstrap-server archly-kafka:9092 --topic design.published --partitions 3 --replication-factor 1 &&
+      kafka-topics --create --if-not-exists --bootstrap-server archly-kafka:9092 --topic design.forked --partitions 3 --replication-factor 1 &&
+      kafka-topics --create --if-not-exists --bootstrap-server archly-kafka:9092 --topic design.viewed --partitions 3 --replication-factor 1 &&
+      kafka-topics --create --if-not-exists --bootstrap-server archly-kafka:9092 --topic room.state_saved --partitions 3 --replication-factor 1 &&
+      echo 'Kafka topics created'"
+    networks:
+      - backend
+
+  # ── DB migrations (runs once then exits) ─────────────────────────────
+  migrate:
+    image: golang:1.21-alpine
+    container_name: archly-migrate
+    restart: on-failure
+    volumes:
+      - ./internal/db/migrations:/migrations
+    working_dir: /tmp
+    entrypoint: ["/bin/sh", "-c"]
+    command: >
+      "go install github.com/pressly/goose/v3/cmd/goose@v3.21.1 &&
+      /root/go/bin/goose -dir /migrations postgres
+      '${DATABASE_URL}' up"
+    env_file: .env
+    networks:
+      - backend
+
+  # ── Go API ────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: archly-api:latest
+    container_name: archly-api
+    restart: unless-stopped
+    depends_on:
+      - migrate
+      - kafka
+    env_file: .env
+    environment:
+      PORT: 8080
+      KAFKA_BROKERS: archly-kafka:9092
+    expose:
+      - "8080"         # internal only — NPM handles public HTTPS
+    networks:
+      - backend        # reaches postgres, redis, kafka
+      - proxy          # reachable by Nginx Proxy Manager

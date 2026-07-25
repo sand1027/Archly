@@ -105,10 +105,10 @@ services:
       - kafka
     env_file: .env
     environment:
-      PORT: 8080
+      PORT: 8081
       KAFKA_BROKERS: archly-kafka:9092
     expose:
-      - "8080"         # internal only — NPM handles public HTTPS
+      - "8081"         # internal only — Cloudflare tunnel handles public HTTPS
     networks:
       - backend        # reaches postgres, redis, kafka
       - proxy          # reachable by Nginx Proxy Manager

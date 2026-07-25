@@ -17,7 +17,7 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
   const abortRef = useRef<AbortController | null>(null);
 
   const stream = useCallback(
-    (prompt: string) => {
+    (prompt: string, provider?: string) => {
       // Cancel any in-flight request
       abortRef.current?.abort();
       setResponse("");
@@ -28,7 +28,7 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
 
       const controller = apiStream(
         aiApi.textToDiagramStreamPath,
-        { prompt },
+        { prompt, provider: provider ?? "" },
         (chunk) => {
           accumulated += chunk;
           setResponse(accumulated);

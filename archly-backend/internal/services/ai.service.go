@@ -112,15 +112,44 @@ type orStreamChunk struct {
 // ── TextToDiagramStream ───────────────────────────────────────────────────
 
 // TextToDiagramStream tries Ollama first (if configured); falls back to
-// Gemini, then OpenRouter. Streams SSE directly to w.
-func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID string, w http.ResponseWriter) error {
+// Gemini, then OpenRouter. If provider is set, skips straight to that provider.
+// Streams SSE directly to w.
+func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, provider string, w http.ResponseWriter) error {
 	systemPrompt := `You output only Mermaid flowchart syntax. Nothing else. No prose, no explanation, no comments, no markdown fences. Start immediately with "flowchart TD". Do NOT use subgraph blocks.`
 	userMessage := fmt.Sprintf(
 		"Generate a Mermaid flowchart diagram for: %s\n\nOutput ONLY the Mermaid syntax starting with \"flowchart TD\". No subgraph blocks. No other text.",
 		prompt,
 	)
 
-	// ── Try Ollama first (local, free, no quota) ──────────────────────────
+	// ── Provider pinning — skip straight to requested provider ────────────
+	switch provider {
+	case "ollama":
+		if s.cfg.OllamaBaseURL != "" {
+			log.Info().Str("user_id", userID).Str("provider", "ollama").Msg("ai: pinned to Ollama")
+			tokens, err := s.ollamaStream(ctx, userID, systemPrompt, userMessage, w)
+			if err == nil {
+				s.publishEvent(userID, prompt, s.cfg.OllamaModel, "ollama", tokens)
+				return nil
+			}
+			log.Error().Err(err).Str("user_id", userID).Msg("ai: pinned Ollama failed")
+			return err
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
+	case "openrouter":
+		if s.cfg.OpenRouterAPIKey != "" {
+			log.Info().Str("user_id", userID).Str("provider", "openrouter").Msg("ai: pinned to OpenRouter")
+			tokens, err := s.openRouterStream(ctx, userID, systemPrompt, userMessage, w)
+			if err == nil {
+				s.publishEvent(userID, prompt, s.cfg.OpenRouterModel, "openrouter", tokens)
+				return nil
+			}
+			log.Error().Err(err).Str("user_id", userID).Msg("ai: pinned OpenRouter failed")
+			return err
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
+	}
+
+	// ── Auto fallback chain: Ollama → Gemini → OpenRouter ─────────────────
 	if s.cfg.OllamaBaseURL != "" {
 		log.Info().
 			Str("user_id", userID).

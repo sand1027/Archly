@@ -24,7 +24,8 @@ func NewAIHandler(svc *services.AIService) *AIHandler {
 // SSE endpoint — streams Mermaid syntax chunks back to the client.
 func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Prompt string `json:"prompt"`
+		Prompt   string `json:"prompt"`
+		Provider string `json:"provider"` // "ollama" | "openrouter" | "" (auto)
 	}
 	if !Decode(w, r, &body) {
 		return
@@ -44,10 +45,11 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 	log.Info().
 		Str("user_id", uid).
 		Str("prompt", body.Prompt).
+		Str("provider_hint", body.Provider).
 		Str("remote_addr", r.RemoteAddr).
 		Msg("handler: TextToDiagramStream request received")
 
-	if err := h.svc.TextToDiagramStream(r.Context(), body.Prompt, uid, w); err != nil {
+	if err := h.svc.TextToDiagramStream(r.Context(), body.Prompt, uid, body.Provider, w); err != nil {
 		if errors.Is(err, services.ErrAIUnavailable) {
 			log.Warn().Str("user_id", uid).Msg("handler: AI unavailable — GEMINI_API_KEY not configured")
 			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",

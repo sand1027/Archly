@@ -139,13 +139,15 @@ const PROMPTS = [
 
 export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps) {
   const [prompt, setPrompt] = useState("");
-  const [activePrompt, setActivePrompt] = useState<string | null>(null); // prompt that triggered current stream
+  const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [target, setTarget] = useState<"canvas" | "flow">("canvas");
+  const [provider, setProvider] = useState<"ollama" | "openrouter">("ollama");
   const { isAuthenticated } = useAuth();
-  // Ref so the onDone closure always sees the latest target without re-creating the stream
   const targetRef = useRef<"canvas" | "flow">("canvas");
   targetRef.current = target;
+  const providerRef = useRef<"ollama" | "openrouter">("ollama");
+  providerRef.current = provider;
 
   const { stream, cancel, isStreaming, response, error } = useAiStream({
     onDone: async (fullResponse) => {
@@ -229,7 +231,7 @@ export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps)
     if (!prompt.trim() || isStreaming) return;
     setStatusMsg(null);
     setActivePrompt(prompt.trim());
-    stream(prompt.trim());
+    stream(prompt.trim(), providerRef.current);
   }, [prompt, isStreaming, stream]);
 
   if (!isOpen) return null;
@@ -336,6 +338,41 @@ export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps)
                 }}
               >
                 {t === "canvas" ? "✏️ Canvas" : "⬡ Flow"}
+              </button>
+            ))}
+          </div>
+
+          {/* AI provider selector */}
+          <div style={{
+            display: "flex",
+            gap: 6,
+            padding: "2px",
+            background: "var(--pd-bg-muted)",
+            borderRadius: "var(--pd-radius)",
+          }}>
+            {([
+              { key: "ollama", label: "🏠 Archly AI", hint: "Local model — fast, private, no quota" },
+              { key: "openrouter", label: "☁️ Cloud AI", hint: "OpenRouter — more detailed output" },
+            ] as const).map(({ key, label, hint }) => (
+              <button
+                key={key}
+                onClick={() => setProvider(key)}
+                title={hint}
+                style={{
+                  flex: 1,
+                  padding: "6px 0",
+                  borderRadius: "calc(var(--pd-radius) - 2px)",
+                  border: "none",
+                  background: provider === key ? "var(--pd-surface)" : "transparent",
+                  color: provider === key ? "var(--pd-brand)" : "var(--pd-text-muted)",
+                  fontSize: 12,
+                  fontWeight: provider === key ? 700 : 500,
+                  cursor: "pointer",
+                  boxShadow: provider === key ? "var(--pd-shadow-sm)" : "none",
+                  transition: "all 120ms",
+                }}
+              >
+                {label}
               </button>
             ))}
           </div>

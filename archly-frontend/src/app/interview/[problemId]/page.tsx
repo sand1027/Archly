@@ -329,48 +329,177 @@ export default function InterviewSessionPage({ params }: Props) {
 
         {/* Ended overlay */}
         {status === "ended" && (
-          <div className="imd-overlay" style={{ position: "absolute" }}>
-            <div className="imd-modal" style={{ textAlign: "center", padding: 40 }}>
-              <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
-              <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8, color: "var(--pd-text)" }}>
-                Interview Complete!
-              </h2>
-              <p style={{ color: "var(--pd-text-muted)", marginBottom: 24 }}>
-                {problem.title} · {problem.durationMins} minutes
-              </p>
-              <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                <button
-                  onClick={() => router.push("/interview")}
+          <InterviewEndOverlay
+            problem={problem}
+            onNewProblem={() => router.push("/interview")}
+            onOpenCanvas={() => router.push("/canvas")}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function InterviewEndOverlay({
+  problem,
+  onNewProblem,
+  onOpenCanvas,
+}: {
+  problem: NonNullable<ReturnType<typeof getProblem>>;
+  onNewProblem: () => void;
+  onOpenCanvas: () => void;
+}) {
+  const rubric = problem.rubric ?? [];
+  const [checked, setChecked] = useState<Record<number, boolean>>({});
+  const [selfGrade, setSelfGrade] = useState(3);
+
+  const ticked = rubric.filter((_, i) => checked[i]).length;
+
+  return (
+    <div className="imd-overlay" style={{ position: "absolute" }}>
+      <div
+        className="imd-modal"
+        style={{
+          textAlign: "left",
+          padding: 28,
+          maxWidth: 480,
+          maxHeight: "90vh",
+          overflowY: "auto",
+        }}
+      >
+        <div style={{ textAlign: "center", marginBottom: 16 }}>
+          <div style={{ fontSize: 40, marginBottom: 8 }}>🎉</div>
+          <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 6, color: "var(--pd-text)" }}>
+            Interview Complete!
+          </h2>
+          <p style={{ color: "var(--pd-text-muted)", margin: 0, fontSize: 13 }}>
+            {problem.title} · {problem.durationMins} minutes
+          </p>
+        </div>
+
+        {rubric.length > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "0.04em",
+                textTransform: "uppercase",
+                color: "var(--pd-text-subtle)",
+                marginBottom: 8,
+              }}
+            >
+              Rubric checklist · {ticked}/{rubric.length}
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              {rubric.map((item, i) => (
+                <label
+                  key={i}
                   style={{
-                    padding: "10px 24px",
+                    display: "flex",
+                    gap: 8,
+                    alignItems: "flex-start",
+                    fontSize: 13,
+                    color: "var(--pd-text)",
+                    cursor: "pointer",
+                    padding: "6px 8px",
                     borderRadius: "var(--pd-radius)",
+                    background: checked[i]
+                      ? "color-mix(in srgb, var(--pd-brand) 8%, transparent)"
+                      : "var(--pd-bg-muted)",
                     border: "1px solid var(--pd-border)",
-                    background: "transparent",
-                    color: "var(--pd-text-muted)",
-                    cursor: "pointer",
-                    fontWeight: 600,
                   }}
                 >
-                  New Problem
-                </button>
-                <button
-                  onClick={() => router.push("/canvas")}
-                  style={{
-                    padding: "10px 24px",
-                    borderRadius: "var(--pd-radius)",
-                    background: "var(--pd-brand)",
-                    color: "#fff",
-                    border: "none",
-                    cursor: "pointer",
-                    fontWeight: 700,
-                  }}
-                >
-                  Open in Canvas →
-                </button>
+                  <input
+                    type="checkbox"
+                    checked={!!checked[i]}
+                    onChange={(e) =>
+                      setChecked((c) => ({ ...c, [i]: e.target.checked }))
+                    }
+                    style={{ marginTop: 2, accentColor: "var(--pd-brand)" }}
+                  />
+                  <span style={{ lineHeight: 1.4 }}>{item}</span>
+                </label>
+              ))}
+            </div>
+
+            <div style={{ marginTop: 14 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 800,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                  color: "var(--pd-text-subtle)",
+                  marginBottom: 6,
+                }}
+              >
+                Self grade · {selfGrade}/5
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setSelfGrade(n)}
+                    style={{
+                      flex: 1,
+                      padding: "8px 0",
+                      borderRadius: "var(--pd-radius)",
+                      border:
+                        selfGrade === n
+                          ? "1px solid var(--pd-brand)"
+                          : "1px solid var(--pd-border)",
+                      background:
+                        selfGrade === n
+                          ? "var(--pd-brand)"
+                          : "transparent",
+                      color: selfGrade === n ? "#fff" : "var(--pd-text-muted)",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {n}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
         )}
+
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          <button
+            onClick={onNewProblem}
+            style={{
+              flex: 1,
+              padding: "10px 16px",
+              borderRadius: "var(--pd-radius)",
+              border: "1px solid var(--pd-border)",
+              background: "transparent",
+              color: "var(--pd-text-muted)",
+              cursor: "pointer",
+              fontWeight: 600,
+            }}
+          >
+            New Problem
+          </button>
+          <button
+            onClick={onOpenCanvas}
+            style={{
+              flex: 1,
+              padding: "10px 16px",
+              borderRadius: "var(--pd-radius)",
+              background: "var(--pd-brand)",
+              color: "#fff",
+              border: "none",
+              cursor: "pointer",
+              fontWeight: 700,
+            }}
+          >
+            Open in Canvas →
+          </button>
+        </div>
       </div>
     </div>
   );

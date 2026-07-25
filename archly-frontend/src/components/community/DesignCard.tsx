@@ -10,6 +10,13 @@ interface DesignCardProps {
 }
 
 export default function DesignCard({ design, onFork, onStar }: DesignCardProps) {
+  const kind = design.kind === "flow" ? "flow" : "canvas";
+  const author =
+    design.authorName ??
+    (design.user_id ? String(design.user_id).slice(0, 8) : "?");
+  const stars = design.starCount ?? design.star_count ?? 0;
+  const forks = design.forkCount ?? design.fork_count ?? 0;
+
   return (
     <div
       style={{
@@ -44,9 +51,28 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
           textDecoration: "none",
           color: "var(--pd-text-subtle)",
           fontSize: 32,
+          position: "relative",
         }}
       >
         🖼
+        <span
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            padding: "2px 8px",
+            borderRadius: "var(--pd-radius-full)",
+            background:
+              kind === "flow"
+                ? "color-mix(in srgb, #6366f1 18%, var(--pd-surface))"
+                : "color-mix(in srgb, #10b981 18%, var(--pd-surface))",
+            color: kind === "flow" ? "#6366f1" : "#10b981",
+            fontSize: 10,
+            fontWeight: 700,
+          }}
+        >
+          {kind === "flow" ? "Flow" : "Canvas"}
+        </span>
       </Link>
 
       {/* Body */}
@@ -86,7 +112,7 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
         )}
 
         {/* Tags */}
-        {design.tags.length > 0 && (
+        {(design.tags?.length ?? 0) > 0 && (
           <div
             style={{
               display: "flex",
@@ -95,7 +121,7 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
               marginBottom: 10,
             }}
           >
-            {design.tags.slice(0, 3).map((tag) => (
+            {(design.tags ?? []).slice(0, 3).map((tag) => (
               <span
                 key={tag}
                 style={{
@@ -150,7 +176,7 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
               flexShrink: 0,
             }}
           >
-            {design.authorName[0]?.toUpperCase()}
+            {author[0]?.toUpperCase() ?? "?"}
           </div>
           <span
             style={{
@@ -161,7 +187,7 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
               whiteSpace: "nowrap",
             }}
           >
-            {design.authorName}
+            {author}
           </span>
         </div>
 
@@ -169,13 +195,13 @@ export default function DesignCard({ design, onFork, onStar }: DesignCardProps) 
         <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
           <StatButton
             icon="⭐"
-            count={design.starCount}
+            count={stars}
             onClick={() => onStar?.(design.id)}
             title="Star"
           />
           <StatButton
             icon="🍴"
-            count={design.forkCount}
+            count={forks}
             onClick={() => onFork?.(design.id)}
             title="Fork onto canvas"
           />

@@ -113,22 +113,22 @@ func scanUser(row pgx.Row) (User, error) {
 
 // ─── Designs ──────────────────────────────────────────────────────────────
 
-const createDesign = `INSERT INTO designs (user_id, title, description, elements, app_state, tags)
-VALUES ($1,$2,$3,$4,$5,$6) RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at`
+const createDesign = `INSERT INTO designs (user_id, title, description, elements, app_state, tags, kind)
+VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at`
 
-func (q *Queries) CreateDesign(ctx context.Context, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string) (Design, error) {
-	row := q.db.QueryRow(ctx, createDesign, userID, title, description, elements, appState, tags)
+func (q *Queries) CreateDesign(ctx context.Context, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string) (Design, error) {
+	row := q.db.QueryRow(ctx, createDesign, userID, title, description, elements, appState, tags, kind)
 	return scanDesign(row)
 }
 
-const getDesignByID = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at FROM designs WHERE id = $1`
+const getDesignByID = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE id = $1`
 
 func (q *Queries) GetDesignByID(ctx context.Context, id uuid.UUID) (Design, error) {
 	row := q.db.QueryRow(ctx, getDesignByID, id)
 	return scanDesign(row)
 }
 
-const listPublishedDesigns = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at FROM designs WHERE published=TRUE ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+const listPublishedDesigns = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE published=TRUE ORDER BY created_at DESC LIMIT $1 OFFSET $2`
 
 func (q *Queries) ListPublishedDesigns(ctx context.Context, limit, offset int32) ([]Design, error) {
 	rows, err := q.db.Query(ctx, listPublishedDesigns, limit, offset)
@@ -139,10 +139,32 @@ func (q *Queries) ListPublishedDesigns(ctx context.Context, limit, offset int32)
 	return scanDesigns(rows)
 }
 
-const listPublishedDesignsByTag = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at FROM designs WHERE published=TRUE AND $1=ANY(tags) ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+const listPublishedDesignsByTag = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE published=TRUE AND $1=ANY(tags) ORDER BY created_at DESC LIMIT $2 OFFSET $3`
 
 func (q *Queries) ListPublishedDesignsByTag(ctx context.Context, tag string, limit, offset int32) ([]Design, error) {
 	rows, err := q.db.Query(ctx, listPublishedDesignsByTag, tag, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDesigns(rows)
+}
+
+const listPublishedDesignsWithQuery = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE published=TRUE AND title ILIKE '%' || $1 || '%' ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+
+func (q *Queries) ListPublishedDesignsWithQuery(ctx context.Context, qstr string, limit, offset int32) ([]Design, error) {
+	rows, err := q.db.Query(ctx, listPublishedDesignsWithQuery, qstr, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDesigns(rows)
+}
+
+const listPublishedDesignsByTagWithQuery = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE published=TRUE AND $1=ANY(tags) AND title ILIKE '%' || $2 || '%' ORDER BY created_at DESC LIMIT $3 OFFSET $4`
+
+func (q *Queries) ListPublishedDesignsByTagWithQuery(ctx context.Context, tag, qstr string, limit, offset int32) ([]Design, error) {
+	rows, err := q.db.Query(ctx, listPublishedDesignsByTagWithQuery, tag, qstr, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -158,14 +180,57 @@ func (q *Queries) CountPublishedDesigns(ctx context.Context) (int64, error) {
 	return count, err
 }
 
-const updateDesign = `UPDATE designs SET title=$2,description=$3,elements=$4,app_state=$5,tags=$6,updated_at=NOW() WHERE id=$1 AND user_id=$7 RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at`
+const countPublishedDesignsByTag = `SELECT COUNT(*) FROM designs WHERE published=TRUE AND $1=ANY(tags)`
 
-func (q *Queries) UpdateDesign(ctx context.Context, id, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string) (Design, error) {
-	row := q.db.QueryRow(ctx, updateDesign, id, title, description, elements, appState, tags, userID)
+func (q *Queries) CountPublishedDesignsByTag(ctx context.Context, tag string) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countPublishedDesignsByTag, tag).Scan(&count)
+	return count, err
+}
+
+const countPublishedDesignsWithQuery = `SELECT COUNT(*) FROM designs WHERE published=TRUE AND title ILIKE '%' || $1 || '%'`
+
+func (q *Queries) CountPublishedDesignsWithQuery(ctx context.Context, qstr string) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countPublishedDesignsWithQuery, qstr).Scan(&count)
+	return count, err
+}
+
+const countPublishedDesignsByTagWithQuery = `SELECT COUNT(*) FROM designs WHERE published=TRUE AND $1=ANY(tags) AND title ILIKE '%' || $2 || '%'`
+
+func (q *Queries) CountPublishedDesignsByTagWithQuery(ctx context.Context, tag, qstr string) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countPublishedDesignsByTagWithQuery, tag, qstr).Scan(&count)
+	return count, err
+}
+
+const listMyDesigns = `SELECT id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at FROM designs WHERE user_id=$1 ORDER BY updated_at DESC LIMIT $2 OFFSET $3`
+
+func (q *Queries) ListMyDesigns(ctx context.Context, userID uuid.UUID, limit, offset int32) ([]Design, error) {
+	rows, err := q.db.Query(ctx, listMyDesigns, userID, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	return scanDesigns(rows)
+}
+
+const countMyDesigns = `SELECT COUNT(*) FROM designs WHERE user_id=$1`
+
+func (q *Queries) CountMyDesigns(ctx context.Context, userID uuid.UUID) (int64, error) {
+	var count int64
+	err := q.db.QueryRow(ctx, countMyDesigns, userID).Scan(&count)
+	return count, err
+}
+
+const updateDesign = `UPDATE designs SET title=$2,description=$3,elements=$4,app_state=$5,tags=$6,kind=$8,updated_at=NOW() WHERE id=$1 AND user_id=$7 RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at`
+
+func (q *Queries) UpdateDesign(ctx context.Context, id, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string) (Design, error) {
+	row := q.db.QueryRow(ctx, updateDesign, id, title, description, elements, appState, tags, userID, kind)
 	return scanDesign(row)
 }
 
-const publishDesign = `UPDATE designs SET published=TRUE,updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,created_at,updated_at`
+const publishDesign = `UPDATE designs SET published=TRUE,updated_at=NOW() WHERE id=$1 AND user_id=$2 RETURNING id,user_id,title,description,elements,app_state,tags,fork_count,star_count,view_count,published,kind,created_at,updated_at`
 
 func (q *Queries) PublishDesign(ctx context.Context, id, userID uuid.UUID) (Design, error) {
 	row := q.db.QueryRow(ctx, publishDesign, id, userID)
@@ -234,7 +299,7 @@ func (q *Queries) UnstarDesign(ctx context.Context, designID, userID uuid.UUID) 
 func scanDesign(row pgx.Row) (Design, error) {
 	var d Design
 	err := row.Scan(&d.ID, &d.UserID, &d.Title, &d.Description, &d.Elements, &d.AppState,
-		&d.Tags, &d.ForkCount, &d.StarCount, &d.ViewCount, &d.Published, &d.CreatedAt, &d.UpdatedAt)
+		&d.Tags, &d.ForkCount, &d.StarCount, &d.ViewCount, &d.Published, &d.Kind, &d.CreatedAt, &d.UpdatedAt)
 	return d, err
 }
 
@@ -243,7 +308,7 @@ func scanDesigns(rows pgx.Rows) ([]Design, error) {
 	for rows.Next() {
 		var d Design
 		if err := rows.Scan(&d.ID, &d.UserID, &d.Title, &d.Description, &d.Elements, &d.AppState,
-			&d.Tags, &d.ForkCount, &d.StarCount, &d.ViewCount, &d.Published, &d.CreatedAt, &d.UpdatedAt); err != nil {
+			&d.Tags, &d.ForkCount, &d.StarCount, &d.ViewCount, &d.Published, &d.Kind, &d.CreatedAt, &d.UpdatedAt); err != nil {
 			return nil, err
 		}
 		designs = append(designs, d)

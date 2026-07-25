@@ -333,6 +333,10 @@ function LabsView({
           <strong>Try it:</strong> {activeLab.tryIt}
         </div>
 
+        {activeLab.quiz && activeLab.quiz.length > 0 && (
+          <LabQuiz key={activeLab.id} quiz={activeLab.quiz} />
+        )}
+
         <p style={{ fontSize: 11, color: "var(--pd-text-muted)", margin: 0, lineHeight: 1.4 }}>
           Tip: the yellow <strong>Architecture Notes</strong> node on the canvas summarizes this design — drag it anywhere.
         </p>
@@ -365,6 +369,112 @@ function LabsView({
           </div>
         </button>
       ))}
+    </div>
+  );
+}
+
+function LabQuiz({ quiz }: { quiz: NonNullable<LabDefinition["quiz"]> }) {
+  const [answers, setAnswers] = useState<Record<number, number | null>>({});
+  const [submitted, setSubmitted] = useState(false);
+
+  const score = quiz.reduce((acc, q, i) => (answers[i] === q.answer ? acc + 1 : acc), 0);
+  const allAnswered = quiz.every((_, i) => answers[i] != null);
+
+  return (
+    <div
+      style={{
+        padding: 12,
+        borderRadius: "var(--pd-radius)",
+        border: "1px solid var(--pd-border)",
+        background: "var(--pd-bg-muted)",
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+      }}
+    >
+      <SectionLabel>Quick quiz</SectionLabel>
+      {quiz.map((q, qi) => (
+        <div key={qi}>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 6, color: "var(--pd-text)" }}>
+            {qi + 1}. {q.question}
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {q.options.map((opt, oi) => {
+              const selected = answers[qi] === oi;
+              const correct = submitted && oi === q.answer;
+              const wrong = submitted && selected && oi !== q.answer;
+              return (
+                <button
+                  key={oi}
+                  type="button"
+                  disabled={submitted}
+                  onClick={() => setAnswers((a) => ({ ...a, [qi]: oi }))}
+                  style={{
+                    textAlign: "left",
+                    fontSize: 11,
+                    padding: "6px 8px",
+                    borderRadius: 6,
+                    border: `1px solid ${
+                      correct
+                        ? "#16a34a"
+                        : wrong
+                          ? "#dc2626"
+                          : selected
+                            ? "var(--pd-brand)"
+                            : "var(--pd-border)"
+                    }`,
+                    background: correct
+                      ? "color-mix(in srgb, #16a34a 12%, transparent)"
+                      : wrong
+                        ? "color-mix(in srgb, #dc2626 12%, transparent)"
+                        : selected
+                          ? "color-mix(in srgb, var(--pd-brand) 10%, transparent)"
+                          : "var(--pd-bg)",
+                    color: "var(--pd-text)",
+                    cursor: submitted ? "default" : "pointer",
+                  }}
+                >
+                  {opt}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {!submitted ? (
+        <button
+          type="button"
+          disabled={!allAnswered}
+          onClick={() => setSubmitted(true)}
+          style={{
+            ...primaryBtn,
+            opacity: allAnswered ? 1 : 0.5,
+            cursor: allAnswered ? "pointer" : "not-allowed",
+          }}
+        >
+          Check answers
+        </button>
+      ) : (
+        <div
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: score === quiz.length ? "#16a34a" : "var(--pd-brand)",
+          }}
+        >
+          Score: {score}/{quiz.length}
+          <button
+            type="button"
+            onClick={() => {
+              setAnswers({});
+              setSubmitted(false);
+            }}
+            style={{ ...linkBtn, marginLeft: 10 }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   );
 }

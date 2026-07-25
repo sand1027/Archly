@@ -7,6 +7,7 @@ type MessageType string
 
 const (
 	MsgElementUpdate MessageType = "element_update"
+	MsgFlowUpdate    MessageType = "flow_update"
 	MsgCursorMove    MessageType = "cursor_move"
 	MsgUserJoin      MessageType = "user_join"
 	MsgUserLeave     MessageType = "user_leave"

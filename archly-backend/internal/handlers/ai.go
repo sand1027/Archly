@@ -25,7 +25,7 @@ func NewAIHandler(svc *services.AIService) *AIHandler {
 func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Prompt   string `json:"prompt"`
-		Provider string `json:"provider"` // "ollama" | "openrouter" | "" (auto)
+		Provider string `json:"provider"` // "ollama" | "gemini" | "openrouter" | "" (auto)
 	}
 	if !Decode(w, r, &body) {
 		return

@@ -4,7 +4,13 @@
  */
 
 import { api } from "./client";
-import type { AuthUser, CommunityDesign, ShareLink } from "@/types";
+import type {
+  AuthUser,
+  CommunityDesign,
+  DesignKind,
+  SavedDesign,
+  ShareLink,
+} from "@/types";
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
@@ -57,18 +63,56 @@ export interface PublishDesignRequest {
   appState: Record<string, any>;
 }
 
+export interface MyDesignsResponse {
+  designs: SavedDesign[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SaveDesignRequest {
+  title: string;
+  description?: string;
+  tags?: string[];
+  kind: DesignKind;
+  // Canvas: Excalidraw elements. Flow: { nodes, edges }.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  elements: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app_state: Record<string, any>;
+}
+
 export const designsApi = {
-  list: (params?: { page?: number; pageSize?: number; tag?: string }) => {
+  list: (params?: { page?: number; pageSize?: number; tag?: string; q?: string }) => {
     const qs = new URLSearchParams();
     if (params?.page)     qs.set("page", String(params.page));
     if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
     if (params?.tag)      qs.set("tag", params.tag);
+    if (params?.q)        qs.set("q", params.q);
     const query = qs.toString();
     return api.get<DesignsListResponse>(`/designs${query ? `?${query}` : ""}`);
   },
 
   get: (id: string) =>
     api.get<CommunityDesign>(`/designs/${id}`),
+
+  // My saved sessions (private history)
+  mine: (params?: { page?: number; pageSize?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.page)     qs.set("page", String(params.page));
+    if (params?.pageSize) qs.set("pageSize", String(params.pageSize));
+    const query = qs.toString();
+    return api.get<MyDesignsResponse>(`/designs/mine${query ? `?${query}` : ""}`);
+  },
+
+  getMine: (id: string) =>
+    api.get<SavedDesign>(`/designs/${id}`),
+
+  save: (body: SaveDesignRequest) =>
+    api.post<SavedDesign>("/designs", body),
+
+  saveUpdate: (id: string, body: SaveDesignRequest) =>
+    api.patch<SavedDesign>(`/designs/${id}`, body),
 
   publish: (body: PublishDesignRequest) =>
     api.post<CommunityDesign>("/designs", body),
@@ -89,6 +133,7 @@ export const designsApi = {
 // ─── Share links ───────────────────────────────────────────────────────────
 
 export interface CreateShareRequest {
+  /** Existing saved design to attach the share link to */
   designId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   elements?: any[];
@@ -98,8 +143,14 @@ export interface CreateShareRequest {
 }
 
 export const shareApi = {
+  // Backend expects snake_case keys (design_id, app_state, ttl_hours)
   create: (body: CreateShareRequest) =>
-    api.post<ShareLink>("/share", body),
+    api.post<ShareLink>("/share", {
+      design_id: body.designId,
+      elements: body.elements,
+      app_state: body.appState,
+      ttl_hours: body.ttlHours,
+    }),
 
   resolve: (slug: string) =>
     api.get<ShareLink & { elements: unknown[]; appState: unknown }>(

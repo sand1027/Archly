@@ -123,9 +123,15 @@ export interface InterviewProblem {
   prompt: string;
   keyChallenge: string;
   referenceElementIds?: string[];  // IDs to show in diff dots
+  /** Optional self-grade checklist shown when the interview ends */
+  rubric?: string[];
 }
 
 export type InterviewStatus = "idle" | "active" | "paused" | "ended";
+
+// ─── Saved sessions / design kinds ─────────────────────────────────────────
+
+export type DesignKind = "canvas" | "flow";
 
 // ─── Community ────────────────────────────────────────────────────────────
 
@@ -133,16 +139,48 @@ export interface CommunityDesign {
   id: string;
   title: string;
   description: string;
-  authorId: string;
-  authorName: string;
+  authorId?: string;
+  authorName?: string;
   authorAvatar?: string;
+  /** Backend snake_case owner id when author fields are absent */
+  user_id?: string;
   tags: string[];
-  forkCount: number;
-  starCount: number;
-  viewCount: number;
-  createdAt: string;
-  updatedAt: string;
-  elements: ExcalidrawElement[];
+  forkCount?: number;
+  starCount?: number;
+  viewCount?: number;
+  fork_count?: number;
+  star_count?: number;
+  view_count?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  created_at?: string;
+  updated_at?: string;
+  // Canvas: Excalidraw elements. Flow: { nodes, edges }.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  elements?: any;
+  kind?: DesignKind;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app_state?: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  appState?: Record<string, any>;
+  published?: boolean;
+}
+
+export interface SavedDesign {
+  id: string;
+  user_id: string;
+  title: string;
+  description: string;
+  // Canvas: Excalidraw elements. Flow: { nodes, edges }.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  elements: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  app_state: Record<string, any>;
+  tags: string[];
+  published: boolean;
+  kind: DesignKind;
+  created_at: string;
+  updated_at: string;
 }
 
 // ─── Share ────────────────────────────────────────────────────────────────
@@ -158,6 +196,7 @@ export interface ShareLink {
 
 export type WsMessageType =
   | "element_update"
+  | "flow_update"
   | "cursor_move"
   | "user_join"
   | "user_leave"

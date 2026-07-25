@@ -75,5 +75,13 @@ export const useAuthStore = create<AuthStore>()(
 
 /** Read the token outside of React (e.g. in fetch interceptors) */
 export function getAccessToken(): string | null {
-  return useAuthStore.getState().accessToken;
+  const fromStore = useAuthStore.getState().accessToken;
+  if (fromStore) return fromStore;
+  // Fallback: AuthProvider key (covers refresh race before Zustand rehydrates)
+  if (typeof window === "undefined") return null;
+  try {
+    return localStorage.getItem("pd-access-token");
+  } catch {
+    return null;
+  }
 }

@@ -1,10 +1,19 @@
 -- name: CreateDesign :one
-INSERT INTO designs (user_id, title, description, elements, app_state, tags)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO designs (user_id, title, description, elements, app_state, tags, kind)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
 RETURNING *;
 
 -- name: GetDesignByID :one
 SELECT * FROM designs WHERE id = $1;
+
+-- name: ListMyDesigns :many
+SELECT * FROM designs
+WHERE user_id = $1
+ORDER BY updated_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: CountMyDesigns :one
+SELECT COUNT(*) FROM designs WHERE user_id = $1;
 
 -- name: ListPublishedDesigns :many
 SELECT * FROM designs
@@ -18,12 +27,32 @@ WHERE published = TRUE AND $1 = ANY(tags)
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3;
 
+-- name: ListPublishedDesignsWithQuery :many
+SELECT * FROM designs
+WHERE published = TRUE AND title ILIKE '%' || $1 || '%'
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
+-- name: ListPublishedDesignsByTagWithQuery :many
+SELECT * FROM designs
+WHERE published = TRUE AND $1 = ANY(tags) AND title ILIKE '%' || $2 || '%'
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
+
 -- name: CountPublishedDesigns :one
 SELECT COUNT(*) FROM designs WHERE published = TRUE;
 
 -- name: CountPublishedDesignsByTag :one
 SELECT COUNT(*) FROM designs
 WHERE published = TRUE AND $1 = ANY(tags);
+
+-- name: CountPublishedDesignsWithQuery :one
+SELECT COUNT(*) FROM designs
+WHERE published = TRUE AND title ILIKE '%' || $1 || '%';
+
+-- name: CountPublishedDesignsByTagWithQuery :one
+SELECT COUNT(*) FROM designs
+WHERE published = TRUE AND $1 = ANY(tags) AND title ILIKE '%' || $2 || '%';
 
 -- name: UpdateDesign :one
 UPDATE designs
@@ -32,6 +61,7 @@ SET title = $2,
     elements = $4,
     app_state = $5,
     tags = $6,
+    kind = $8,
     updated_at = NOW()
 WHERE id = $1 AND user_id = $7
 RETURNING *;

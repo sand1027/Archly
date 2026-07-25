@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useAiStream } from "@/hooks/useAiStream";
 import { useCanvasStore } from "@/store/canvas.store";
 import { useFlowStore } from "@/store/flow.store";
@@ -8,6 +8,8 @@ import { useAuth } from "@/providers/auth-provider";
 import { convertMermaidToCanvas } from "@/lib/mermaid-to-canvas";
 import { convertMermaidToFlow } from "@/lib/mermaid-to-flow";
 import { getExcalidrawAPI } from "@/lib/excalidraw-api";
+import ModelSelect from "@/components/ai/ModelSelect";
+import { readStoredAiProvider, type AiProvider } from "@/lib/ai/providers";
 import type { ExcalidrawElement } from "@/types";
 
 // Lazily resolved — same pattern as MermaidEditor
@@ -126,6 +128,8 @@ function sanitizeMermaid(raw: string): string {
 interface AiDiagramPanelProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Switch to Flow tab before inserting generated nodes */
+  onPreferFlow?: () => void;
 }
 
 const PROMPTS = [
@@ -137,17 +141,27 @@ const PROMPTS = [
   "Design a notification system at 10M/day",
 ];
 
-export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps) {
+export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiagramPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [target, setTarget] = useState<"canvas" | "flow">("canvas");
-  const [provider, setProvider] = useState<"ollama" | "openrouter">("ollama");
+  const [provider, setProvider] = useState<AiProvider>("openrouter");
   const { isAuthenticated } = useAuth();
   const targetRef = useRef<"canvas" | "flow">("canvas");
-  targetRef.current = target;
-  const providerRef = useRef<"ollama" | "openrouter">("ollama");
-  providerRef.current = provider;
+  const providerRef = useRef<AiProvider>("openrouter");
+
+  useEffect(() => {
+    targetRef.current = target;
+  }, [target]);
+
+  useEffect(() => {
+    providerRef.current = provider;
+  }, [provider]);
+
+  useEffect(() => {
+    queueMicrotask(() => setProvider(readStoredAiProvider()));
+  }, []);
 
   const { stream, cancel, isStreaming, response, error } = useAiStream({
     onDone: async (fullResponse) => {
@@ -180,10 +194,12 @@ export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps)
         const newEdges = edges.filter(
           (e) => !existingEdgeKeys.has(`${e.source}->${e.target}`)
         );
+        onPreferFlow?.();
         useFlowStore.setState((s) => ({
           nodes: [...s.nodes, ...newNodes],
           edges: [...s.edges, ...newEdges],
         }));
+        useFlowStore.getState().requestFitView();
         setStatusMsg(`✓ Added ${newNodes.length} nodes to Flow canvas`);
         setTimeout(() => { setStatusMsg(null); onClose(); }, 1500);
         return;
@@ -319,60 +335,26 @@ export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps)
             background: "var(--pd-bg-muted)",
             borderRadius: "var(--pd-radius)",
           }}>
-            {(["canvas", "flow"] as const).map((t) => (
+            {(["canvas", "flow"] as const).map((option) => (
               <button
-                key={t}
-                onClick={() => setTarget(t)}
+                key={option}
+                type="button"
+                onClick={() => setTarget(option)}
                 style={{
                   flex: 1,
                   padding: "6px 0",
                   borderRadius: "calc(var(--pd-radius) - 2px)",
                   border: "none",
-                  background: target === t ? "var(--pd-surface)" : "transparent",
-                  color: target === t ? "var(--pd-text)" : "var(--pd-text-muted)",
+                  background: target === option ? "var(--pd-surface)" : "transparent",
+                  color: target === option ? "var(--pd-text)" : "var(--pd-text-muted)",
                   fontSize: 12,
-                  fontWeight: target === t ? 700 : 500,
+                  fontWeight: target === option ? 700 : 500,
                   cursor: "pointer",
-                  boxShadow: target === t ? "var(--pd-shadow-sm)" : "none",
+                  boxShadow: target === option ? "var(--pd-shadow-sm)" : "none",
                   transition: "all 120ms",
                 }}
               >
-                {t === "canvas" ? "✏️ Canvas" : "⬡ Flow"}
-              </button>
-            ))}
-          </div>
-
-          {/* AI provider selector */}
-          <div style={{
-            display: "flex",
-            gap: 6,
-            padding: "2px",
-            background: "var(--pd-bg-muted)",
-            borderRadius: "var(--pd-radius)",
-          }}>
-            {([
-              { key: "ollama", label: "🏠 Archly AI", hint: "Local model — fast, private, no quota" },
-              { key: "openrouter", label: "☁️ Cloud AI", hint: "OpenRouter — more detailed output" },
-            ] as const).map(({ key, label, hint }) => (
-              <button
-                key={key}
-                onClick={() => setProvider(key)}
-                title={hint}
-                style={{
-                  flex: 1,
-                  padding: "6px 0",
-                  borderRadius: "calc(var(--pd-radius) - 2px)",
-                  border: "none",
-                  background: provider === key ? "var(--pd-surface)" : "transparent",
-                  color: provider === key ? "var(--pd-brand)" : "var(--pd-text-muted)",
-                  fontSize: 12,
-                  fontWeight: provider === key ? 700 : 500,
-                  cursor: "pointer",
-                  boxShadow: provider === key ? "var(--pd-shadow-sm)" : "none",
-                  transition: "all 120ms",
-                }}
-              >
-                {label}
+                {option === "canvas" ? "✏️ Canvas" : "⬡ Flow"}
               </button>
             ))}
           </div>
@@ -402,27 +384,51 @@ export default function AiDiagramPanel({ isOpen, onClose }: AiDiagramPanelProps)
           </div>
 
           {/* Prompt input */}
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
-            }}
-            placeholder="Describe your system architecture…  (⌘+Enter to generate)"
-            rows={3}
+          <div
             style={{
-              padding: "10px 12px",
               borderRadius: "var(--pd-radius)",
               border: "1px solid var(--pd-border)",
               background: "var(--pd-bg-subtle)",
-              color: "var(--pd-text)",
-              fontSize: 13,
-              fontFamily: "Assistant, sans-serif",
-              lineHeight: 1.5,
-              resize: "vertical",
-              outline: "none",
+              overflow: "visible",
             }}
-          />
+          >
+            <textarea
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
+              }}
+              placeholder="Describe your system architecture…  (⌘+Enter to generate)"
+              rows={3}
+              style={{
+                display: "block",
+                width: "100%",
+                padding: "10px 12px 6px",
+                border: "none",
+                background: "transparent",
+                color: "var(--pd-text)",
+                fontSize: 13,
+                fontFamily: "Assistant, sans-serif",
+                lineHeight: 1.5,
+                resize: "vertical",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: "5px 7px 7px",
+              }}
+            >
+              <ModelSelect
+                value={provider}
+                onChange={setProvider}
+                disabled={isStreaming}
+              />
+            </div>
+          </div>
 
           {/* Streaming preview — bordered card with prompt label */}
           {(isStreaming || (response && !statusMsg)) && activePrompt && (

@@ -122,7 +122,7 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 	)
 
 	// ── Provider pinning — skip straight to requested provider ────────────
-	switch provider {
+	switch strings.TrimSpace(strings.ToLower(provider)) {
 	case "ollama":
 		if s.cfg.OllamaBaseURL != "" {
 			log.Info().Str("user_id", userID).Str("provider", "ollama").Msg("ai: pinned to Ollama")
@@ -135,6 +135,18 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 			return err
 		}
 		log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
+	case "gemini":
+		if s.cfg.GeminiAPIKey != "" {
+			log.Info().Str("user_id", userID).Str("provider", "gemini").Msg("ai: pinned to Gemini")
+			tokens, err := s.geminiStream(ctx, userID, systemPrompt, userMessage, w)
+			if err == nil {
+				s.publishEvent(userID, prompt, s.cfg.GeminiModel, "gemini", tokens)
+				return nil
+			}
+			log.Error().Err(err).Str("user_id", userID).Msg("ai: pinned Gemini failed")
+			return err
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: gemini requested but key not set — falling through")
 	case "openrouter":
 		if s.cfg.OpenRouterAPIKey != "" {
 			log.Info().Str("user_id", userID).Str("provider", "openrouter").Msg("ai: pinned to OpenRouter")

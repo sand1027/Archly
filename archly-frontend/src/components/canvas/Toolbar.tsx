@@ -14,6 +14,11 @@ interface ToolbarProps {
   onOpenShare: () => void;
   onOpenInterview: () => void;
   onPublish: () => void;
+  onSave: () => void;
+  onSaveAs: () => void;
+  onOpenHistory: () => void;
+  onOpenExport?: () => void;
+  onOpenShortcuts?: () => void;
 }
 
 export default function Toolbar({
@@ -24,6 +29,11 @@ export default function Toolbar({
   onOpenShare,
   onOpenInterview,
   onPublish,
+  onSave,
+  onSaveAs,
+  onOpenHistory,
+  onOpenExport,
+  onOpenShortcuts,
 }: ToolbarProps) {
   const { resolvedTheme, toggleTheme } = useTheme();
   const { user, isAuthenticated, logout } = useAuth();
@@ -72,20 +82,18 @@ export default function Toolbar({
       <Divider />
 
       {/* ── Tools ── */}
-      <Btn icon="📝" label="Mermaid" onClick={onOpenMermaid} title="Mermaid → canvas (Alt+M)" />
-      <Btn icon="✨" label="AI" onClick={onOpenAi} title="AI text-to-diagram (Alt+A)" />
-      <Btn icon="💬" label="Chat" onClick={onOpenChat} title="Architecture chat — explain & chaos (Alt+C)" />
-      <Btn icon="📚" label="Guide" onClick={onOpenGuide} title="Student guide — nodes, config, labs (Alt+G)" />
+      <Btn label="Mermaid" onClick={onOpenMermaid} title="Mermaid → canvas (Alt+M)" />
+      <Btn label="AI" onClick={onOpenAi} title="AI text-to-diagram (Alt+A)" />
+      <Btn label="Chat" onClick={onOpenChat} title="Architecture chat (Alt+C)" />
+      <Btn label="Guide" onClick={onOpenGuide} title="Student guide (Alt+G)" />
 
       <Divider />
 
-      <NavLink href="/community" icon="🌐" label="Community" />
-      <Btn icon="🎓" label="Interview" onClick={onOpenInterview} title="System design practice" />
+      <NavLink href="/community" label="Community" />
+      <Btn label="Interview" onClick={onOpenInterview} title="System design practice" />
 
-      {/* ── Spacer ── */}
       <div style={{ flex: 1 }} />
 
-      {/* ── Simulation badge ── */}
       {isRunning && (
         <div style={{
           display: "flex", alignItems: "center", gap: 6,
@@ -93,18 +101,15 @@ export default function Toolbar({
           background: "color-mix(in srgb, var(--pd-brand) 12%, transparent)",
           border: "1px solid color-mix(in srgb, var(--pd-brand) 30%, transparent)",
           color: "var(--pd-brand)", fontSize: 12, fontWeight: 700,
-          animation: "fade-in 200ms ease",
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: "50%",
             background: "var(--pd-brand)",
-            animation: "pulse-ring 1.5s ease-in-out infinite",
           }} />
           Simulating
         </div>
       )}
 
-      {/* ── Unsaved dot ── */}
       {isDirty && !isRunning && (
         <span
           title="Unsaved changes"
@@ -118,55 +123,57 @@ export default function Toolbar({
 
       <Divider />
 
-      {/* ── Share ── */}
-      <Btn icon="🔗" label="Share" onClick={onOpenShare} title="Share canvas" />
+      <Btn label="Save" onClick={onSave} title="Save this session (Alt+S)" />
+      <Btn label="Save as" onClick={onSaveAs} title="Save as a new session" />
+      <Btn label="History" onClick={onOpenHistory} title="Your saved sessions (Alt+H)" />
+      {onOpenExport && (
+        <Btn label="Export" onClick={onOpenExport} title="Export PNG / SVG / Mermaid" />
+      )}
+      <Btn label="Share" onClick={onOpenShare} title="Share canvas" />
 
-      {/* ── Publish ── */}
       {isAuthenticated && (
-        <Btn icon="📤" label="Publish" onClick={onPublish} title="Publish to gallery" />
+        <Btn label="Publish" onClick={onPublish} title="Publish to gallery" />
+      )}
+      {onOpenShortcuts && (
+        <Btn label="?" onClick={onOpenShortcuts} title="Keyboard shortcuts" />
       )}
 
-      {/* ── Theme toggle ── */}
       <button
         onClick={toggleTheme}
         title={`Switch to ${isDark ? "light" : "dark"} mode`}
         style={{
-          width: 32, height: 32, borderRadius: "var(--pd-radius)",
+          padding: "5px 9px",
+          borderRadius: "var(--pd-radius)",
           border: "1px solid var(--pd-border)",
-          background: "var(--pd-bg-subtle)",
+          background: "transparent",
           color: "var(--pd-text-muted)",
-          fontSize: 14, cursor: "pointer",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          transition: "all var(--pd-duration) var(--pd-ease)",
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: "pointer",
           flexShrink: 0,
         }}
-        onMouseEnter={e => {
-          (e.currentTarget as HTMLElement).style.background = "var(--pd-bg-muted)";
-          (e.currentTarget as HTMLElement).style.borderColor = "var(--pd-border-strong)";
-        }}
-        onMouseLeave={e => {
-          (e.currentTarget as HTMLElement).style.background = "var(--pd-bg-subtle)";
-          (e.currentTarget as HTMLElement).style.borderColor = "var(--pd-border)";
-        }}
       >
-        {isDark ? "☀️" : "🌙"}
+        {isDark ? "Light" : "Dark"}
       </button>
 
       <Divider />
 
-      {/* ── Auth ── */}
       {isAuthenticated ? (
         <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-          <div style={{
-            width: 30, height: 30, borderRadius: "50%",
-            background: "linear-gradient(135deg, var(--pd-brand), #8b5cf6)",
-            color: "#fff",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 12, fontWeight: 800,
-            boxShadow: "0 2px 6px rgba(91,94,244,0.35)",
-          }} title={user?.displayName ?? "Account"}>
-            {user?.displayName?.[0]?.toUpperCase() ?? "U"}
-          </div>
+          <span
+            title={user?.displayName ?? "Account"}
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "var(--pd-text-muted)",
+              maxWidth: 100,
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {user?.displayName ?? "Account"}
+          </span>
           <button
             onClick={() => {
               logout();
@@ -192,29 +199,20 @@ export default function Toolbar({
           background: "var(--pd-brand)",
           color: "#fff", fontSize: 12, fontWeight: 700,
           textDecoration: "none",
-          boxShadow: "0 2px 6px rgba(91,94,244,0.3)",
-          transition: "background var(--pd-duration)",
-        }}
-          onMouseEnter={e => (e.currentTarget.style.background = "var(--pd-brand-hover)")}
-          onMouseLeave={e => (e.currentTarget.style.background = "var(--pd-brand)")}
-        >
+        }}>
           Sign up
         </Link>
       )}
-
-      {/* ── Plus badge — removed, everything is free ── */}
     </header>
   );
 }
 
-// ─── Sub-components ────────────────────────────────────────────────────────
-
-function Btn({ icon, label, onClick, title }: {
-  icon: string; label: string; onClick: () => void; title?: string;
+function Btn({ label, onClick, title }: {
+  label: string; onClick: () => void; title?: string;
 }) {
   return (
     <button onClick={onClick} title={title} style={{
-      display: "flex", alignItems: "center", gap: 5,
+      display: "flex", alignItems: "center",
       padding: "5px 9px", borderRadius: "var(--pd-radius)",
       border: "none", background: "transparent",
       color: "var(--pd-text-muted)",
@@ -231,16 +229,15 @@ function Btn({ icon, label, onClick, title }: {
         (e.currentTarget as HTMLElement).style.color = "var(--pd-text-muted)";
       }}
     >
-      <span style={{ fontSize: 13 }}>{icon}</span>
-      <span>{label}</span>
+      {label}
     </button>
   );
 }
 
-function NavLink({ href, icon, label }: { href: string; icon: string; label: string }) {
+function NavLink({ href, label }: { href: string; label: string }) {
   return (
     <Link href={href} style={{
-      display: "flex", alignItems: "center", gap: 5,
+      display: "flex", alignItems: "center",
       padding: "5px 9px", borderRadius: "var(--pd-radius)",
       color: "var(--pd-text-muted)", fontSize: 12, fontWeight: 500,
       textDecoration: "none",
@@ -255,8 +252,7 @@ function NavLink({ href, icon, label }: { href: string; icon: string; label: str
         (e.currentTarget as HTMLElement).style.color = "var(--pd-text-muted)";
       }}
     >
-      <span style={{ fontSize: 13 }}>{icon}</span>
-      <span>{label}</span>
+      {label}
     </Link>
   );
 }

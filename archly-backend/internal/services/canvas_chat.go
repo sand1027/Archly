@@ -35,34 +35,35 @@ type DiagramEdge struct {
 }
 
 type DiagramChaos struct {
-	ID        string                 `json:"id"`
-	Type      string                 `json:"type"`
-	NodeID    string                 `json:"nodeId"`
-	Params    map[string]interface{} `json:"params,omitempty"`
-	InjectedAt int64                 `json:"injectedAt,omitempty"`
+	ID         string                 `json:"id"`
+	Type       string                 `json:"type"`
+	NodeID     string                 `json:"nodeId"`
+	Params     map[string]interface{} `json:"params,omitempty"`
+	InjectedAt int64                  `json:"injectedAt,omitempty"`
 }
 
 type DiagramMetrics struct {
-	NodeID      string  `json:"nodeId"`
-	RPS         float64 `json:"rps,omitempty"`
-	LatencyAvg  float64 `json:"latencyAvg,omitempty"`
-	ErrorRate   float64 `json:"errorRate,omitempty"`
-	CPUPercent  float64 `json:"cpuPercent,omitempty"`
-	IsBottleneck bool   `json:"isBottleneck,omitempty"`
+	NodeID       string  `json:"nodeId"`
+	RPS          float64 `json:"rps,omitempty"`
+	LatencyAvg   float64 `json:"latencyAvg,omitempty"`
+	ErrorRate    float64 `json:"errorRate,omitempty"`
+	CPUPercent   float64 `json:"cpuPercent,omitempty"`
+	IsBottleneck bool    `json:"isBottleneck,omitempty"`
 }
 
 type DiagramContext struct {
-	Nodes      []DiagramNode    `json:"nodes"`
-	Edges      []DiagramEdge    `json:"edges"`
-	Selection  []string         `json:"selection"`
-	Chaos      []DiagramChaos   `json:"chaos"`
-	Metrics    []DiagramMetrics `json:"metrics,omitempty"`
+	Nodes     []DiagramNode    `json:"nodes"`
+	Edges     []DiagramEdge    `json:"edges"`
+	Selection []string         `json:"selection"`
+	Chaos     []DiagramChaos   `json:"chaos"`
+	Metrics   []DiagramMetrics `json:"metrics,omitempty"`
 }
 
 type CanvasChatRequest struct {
 	Messages []ChatMessage  `json:"messages"`
 	Diagram  DiagramContext `json:"diagram"`
-	Canvas   string         `json:"canvas"` // "excalidraw" | "flow"
+	Canvas   string         `json:"canvas"`   // "excalidraw" | "flow"
+	Provider string         `json:"provider"` // "ollama" | "gemini" | "openrouter" | "" (auto)
 }
 
 const canvasChatSystemPrompt = `You are Archly's architecture assistant. You help users understand their system design diagram and run chaos experiments.
@@ -70,8 +71,7 @@ const canvasChatSystemPrompt = `You are Archly's architecture assistant. You hel
 You can:
 1. Explain what nodes do, how they connect, and what bottlenecks mean.
 2. Suggest and apply chaos experiments on nodes.
-
-You CANNOT add, remove, or rewire nodes. If asked to redesign the architecture, explain briefly and tell them to use the AI Generate (Mermaid) panel.
+3. On the Flow canvas, add, remove, connect, disconnect, and relabel nodes.
 
 Chaos types (exactly these):
 - crash — kill the node (RPS=0, errors)
@@ -82,16 +82,17 @@ Chaos types (exactly these):
 - canary — asymmetric canary traffic (params.canaryPercent, default 10)
 - zero — zero-weight / black hole (no traffic)
 
-When the user asks to inject, remove, or clear chaos, end your reply with an actions fence AFTER a short confirmation in plain prose:
+When the user asks to mutate the diagram or inject, remove, or clear chaos, end your reply with an actions fence AFTER a short confirmation in plain prose:
 
 ` + "```actions" + `
-{"actions":[{"type":"inject_chaos","nodeId":"<id>","chaosType":"crash","params":{}},{"type":"remove_chaos","injectionId":"<id>"},{"type":"clear_chaos"}]}
+{"actions":[{"type":"add_node","componentId":"cache","label":"Redis","x":500,"y":200},{"type":"remove_node","nodeId":"<id>"},{"type":"connect","source":"<id>","target":"<id>"},{"type":"disconnect","source":"<id>","target":"<id>"},{"type":"relabel","nodeId":"<id>","label":"New label"},{"type":"inject_chaos","nodeId":"<id>","chaosType":"crash","params":{}},{"type":"remove_chaos","injectionId":"<id>"},{"type":"clear_chaos"}]}
 ` + "```" + `
 
 Rules for actions:
 - Prefer exact nodeId from the diagram context. If the user names a label, resolve to the matching node id.
+- Diagram mutation actions are supported on Flow. For add_node, use a componentId represented in the diagram context when possible; source/target may also be supplied as sourceLabel/targetLabel.
 - Only emit actions when the user clearly wants a change. Pure questions get prose only — no actions fence.
-- Never invent node ids that are not in the diagram.
+- Never invent node ids that are not in the diagram; newly added nodes should be referenced by their requested labels in later actions.
 - Keep prose concise (2–6 sentences). Do not put JSON in the prose section.
 - Use selection when the user says "this" / "selected" without naming a node.`
 
@@ -99,9 +100,10 @@ var actionsFenceRE = regexp.MustCompile("(?s)```(?:actions|json)\\s*\\n(\\{.*?\"
 var bareActionsRE = regexp.MustCompile(`(?s)(\{\s*"actions"\s*:\s*\[.*?\]\s*\})\s*$`)
 
 // CanvasChatStream answers a diagram-aware chat turn and streams SSE:
-//   event: token  — prose chunks
-//   event: actions — {"actions":[...]} when present
-//   data: [DONE]
+//
+//	event: token  — prose chunks
+//	event: actions — {"actions":[...]} when present
+//	data: [DONE]
 func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest, userID string, w http.ResponseWriter) error {
 	if len(req.Messages) == 0 {
 		return fmt.Errorf("messages required")
@@ -111,9 +113,61 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 	}
 
 	userPayload := buildCanvasChatUserPayload(req)
+	provider := strings.TrimSpace(strings.ToLower(req.Provider))
 
+	// ── Provider pinning ──────────────────────────────────────────────────
+	switch provider {
+	case "ollama":
+		if s.cfg.OllamaBaseURL != "" {
+			log.Info().Str("user_id", userID).Str("provider", "ollama").Msg("ai: canvas chat pinned to Ollama")
+			full, err := s.ollamaChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+			if err != nil {
+				return err
+			}
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
+	case "gemini":
+		if s.cfg.GeminiAPIKey != "" {
+			log.Info().Str("user_id", userID).Str("provider", "gemini").Msg("ai: canvas chat pinned to Gemini")
+			full, err := s.geminiChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+			if err != nil {
+				return err
+			}
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: gemini requested but key not set — falling through")
+	case "openrouter":
+		if s.cfg.OpenRouterAPIKey != "" {
+			log.Info().Str("user_id", userID).Str("provider", "openrouter").Msg("ai: canvas chat pinned to OpenRouter")
+			full, err := s.openRouterChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+			if err != nil {
+				return err
+			}
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
+	}
+
+	// ── Auto fallback: Ollama → Gemini → OpenRouter ───────────────────────
 	var full string
 	var err error
+
+	if s.cfg.OllamaBaseURL != "" {
+		log.Info().
+			Str("user_id", userID).
+			Str("provider", "ollama").
+			Str("model", s.cfg.OllamaModel).
+			Str("canvas", req.Canvas).
+			Int("nodes", len(req.Diagram.Nodes)).
+			Msg("ai: CanvasChatStream — trying Ollama")
+
+		full, err = s.ollamaChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+		if err == nil {
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Err(err).Str("user_id", userID).Msg("ai: Ollama canvas chat failed — falling back")
+	}
 
 	if s.cfg.GeminiAPIKey != "" {
 		log.Info().
@@ -171,7 +225,7 @@ func buildCanvasChatUserPayload(req CanvasChatRequest) string {
 		b.WriteString(m.Content)
 		b.WriteString("\n")
 	}
-	b.WriteString("\nRespond as ASSISTANT. Prose first; actions fence only if mutating chaos.")
+	b.WriteString("\nRespond as ASSISTANT. Prose first; actions fence only if mutating the diagram or chaos.")
 	return b.String()
 }
 
@@ -205,6 +259,11 @@ func sanitizeActionsJSON(raw string) string {
 		"inject_chaos": true,
 		"remove_chaos": true,
 		"clear_chaos":  true,
+		"add_node":     true,
+		"remove_node":  true,
+		"connect":      true,
+		"disconnect":   true,
+		"relabel":      true,
 	}
 	filtered := make([]map[string]interface{}, 0, len(envelope.Actions))
 	for _, a := range envelope.Actions {
@@ -341,8 +400,17 @@ func (s *AIService) geminiChatCollect(ctx context.Context, userID, system, user 
 }
 
 func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, user string) (string, error) {
+	return s.openaiCompatChatCollect(ctx, userID, system, user, openRouterURL, s.cfg.OpenRouterModel, s.cfg.OpenRouterAPIKey, "openrouter")
+}
+
+func (s *AIService) ollamaChatCollect(ctx context.Context, userID, system, user string) (string, error) {
+	url := strings.TrimRight(s.cfg.OllamaBaseURL, "/") + "/v1/chat/completions"
+	return s.openaiCompatChatCollect(ctx, userID, system, user, url, s.cfg.OllamaModel, "", "ollama")
+}
+
+func (s *AIService) openaiCompatChatCollect(ctx context.Context, userID, system, user, url, model, apiKey, provider string) (string, error) {
 	reqBody, _ := json.Marshal(orRequest{
-		Model: s.cfg.OpenRouterModel,
+		Model: model,
 		Messages: []orMessage{
 			{Role: "system", Content: system},
 			{Role: "user", Content: user},
@@ -352,16 +420,18 @@ func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, u
 		Temperature: 0.3,
 	})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, openRouterURL, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
 	if err != nil {
-		return "", fmt.Errorf("build openrouter request: %w", err)
+		return "", fmt.Errorf("build %s request: %w", provider, err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.cfg.OpenRouterAPIKey)
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("openrouter http: %w", err)
+		return "", fmt.Errorf("%s http: %w", provider, err)
 	}
 	defer resp.Body.Close()
 
@@ -370,7 +440,7 @@ func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, u
 		if resp.StatusCode == http.StatusTooManyRequests {
 			return "", ErrAIQuotaExceeded
 		}
-		return "", fmt.Errorf("openrouter %d: %s", resp.StatusCode, truncate(string(body), 400))
+		return "", fmt.Errorf("%s %d: %s", provider, resp.StatusCode, truncate(string(body), 400))
 	}
 
 	var full strings.Builder
@@ -399,8 +469,8 @@ func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, u
 		return full.String(), err
 	}
 	if full.Len() == 0 {
-		log.Warn().Str("user_id", userID).Msg("ai: OpenRouter canvas chat returned empty")
-		return "", errors.New("empty OpenRouter response")
+		log.Warn().Str("user_id", userID).Str("provider", provider).Msg("ai: canvas chat returned empty")
+		return "", fmt.Errorf("empty %s response", provider)
 	}
 	return full.String(), nil
 }

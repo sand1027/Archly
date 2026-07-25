@@ -142,6 +142,7 @@ func main() {
 	r.Route("/designs", func(r chi.Router) {
 		dh := handlers.NewDesignHandler(designSvc)
 		r.Get("/", dh.List)
+		r.With(middleware.JWT(cfg)).Get("/mine", dh.Mine)
 		r.Get("/{id}", dh.Get)
 		r.With(middleware.JWT(cfg)).Post("/", dh.Create)
 		r.With(middleware.JWT(cfg)).Patch("/{id}", dh.Update)

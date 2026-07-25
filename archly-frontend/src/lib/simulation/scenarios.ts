@@ -16,6 +16,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design the Twitter timeline feed for 100M daily active users. Users can follow others and see a real-time feed of tweets from people they follow.",
     keyChallenge:
       "Fan-out on write vs read. Celebrity accounts have 50M+ followers — naive fan-out on write causes write amplification. Hybrid approach needed.",
+    rubric: [
+      "Clarified DAU, feed freshness, and celebrity-follower constraints",
+      "Chose fan-out strategy (write / read / hybrid) with trade-offs",
+      "Included caching layer for hot timelines",
+      "Addressed ranking / timeline assembly path",
+      "Discussed failure modes and backfill for new follows",
+    ],
   },
   {
     id: "url-shortener",
@@ -27,6 +34,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a URL shortening service like bit.ly. Users submit long URLs and get a short slug. Billions of redirects per day.",
     keyChallenge:
       "CDN can cache popular URLs (301). DB only for rare/new ones. No DB join needed — key-value lookup pattern.",
+    rubric: [
+      "Defined write path (create short URL) vs read path (redirect)",
+      "Chose ID generation (hash / counter / base62) with collision handling",
+      "Used CDN or cache for hot redirects",
+      "Estimated storage and QPS roughly",
+      "Mentioned analytics / expiry if relevant",
+    ],
   },
   {
     id: "video-streaming",
@@ -38,6 +52,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a video streaming platform like YouTube or Netflix. Users upload videos that are transcoded and streamed to millions of viewers globally.",
     keyChallenge:
       "CDN is essential — video bytes are the bulk of traffic. CDN absorbs 90%+ of bytes; origin only handles uploads and misses. Async transcoding pipeline via message queue after upload.",
+    rubric: [
+      "Separated upload, transcoding, and playback paths",
+      "Placed CDN in front of object storage for playback",
+      "Used async queue/workers for transcoding",
+      "Mentioned adaptive bitrate / multiple resolutions",
+      "Discussed metadata store vs blob store split",
+    ],
   },
   {
     id: "ride-sharing",
@@ -49,6 +70,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design Uber's ride-matching system. Drivers and riders are matched in real-time. Location updates stream constantly from mobile clients.",
     keyChallenge:
       "WebSocket for location updates. Consistent hash for geo sharding. Machine ID at scale is the hardest part — leasing from a coord service.",
+    rubric: [
+      "Real-time location updates (WebSocket / streaming)",
+      "Geo indexing / sharding strategy",
+      "Matching service with supply/demand considerations",
+      "Discussed dispatch latency and fairness",
+      "Covered failure when matcher or location service dies",
+    ],
   },
   {
     id: "chat-messaging",
@@ -60,6 +88,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a real-time chat application like WhatsApp or Slack. Support 1:1 and group messaging with delivery receipts.",
     keyChallenge:
       "Message fanout for groups is the same fan-out problem as Twitter. Consistency across nodes requires shared state — Redis pub/sub for WS fan-out.",
+    rubric: [
+      "Connection model (WebSocket gateways)",
+      "Message persistence + delivery receipts",
+      "Group fan-out approach",
+      "Online presence strategy",
+      "Idempotency / ordering considerations",
+    ],
   },
   {
     id: "web-crawler",
@@ -71,6 +106,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a scalable web crawler. The system must discover and index billions of web pages while being polite to target servers.",
     keyChallenge:
       "URL frontier (queue) is the core — prioritise by page rank and freshness. Per-domain rate limiting to be a polite crawler.",
+    rubric: [
+      "URL frontier / queue design",
+      "Deduplication of URLs",
+      "Per-domain politeness / rate limits",
+      "Storage for crawled content + metadata",
+      "Priority / freshness strategy",
+    ],
   },
   {
     id: "search-autocomplete",
@@ -82,6 +124,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a search autocomplete system like Google's typeahead. Results must appear within 100ms as the user types.",
     keyChallenge:
       "Batch update top-k counts every few minutes, not on every search. New trending queries surface within minutes.",
+    rubric: [
+      "Sub-100ms latency path (cache / trie / prefix index)",
+      "Ranking / popularity signals",
+      "Offline or batched update pipeline",
+      "Personalization vs global top-k trade-off",
+      "Cache invalidation for trending queries",
+    ],
   },
   {
     id: "notification-system",
@@ -93,6 +142,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a notification system that sends 10M+ notifications per day across push, email, and SMS channels.",
     keyChallenge:
       "Priority queues for time-sensitive notifications. DLQ for retries. Notifications during quiet hours must be rescheduled, not dropped.",
+    rubric: [
+      "Multi-channel fan-out (push / email / SMS)",
+      "Queue + worker architecture",
+      "Retries and DLQ",
+      "User preferences / quiet hours",
+      "Idempotency to avoid duplicate sends",
+    ],
   },
   {
     id: "leaderboard",
@@ -104,6 +160,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a real-time global leaderboard for a gaming platform. Top 100 scores must be served in under 50ms.",
     keyChallenge:
       "Top 100 global leaderboard in < 50ms. Redis sorted sets are the canonical solution.",
+    rubric: [
+      "Chose sorted-set / equivalent for top-K",
+      "Sub-50ms read path",
+      "Write path for score updates",
+      "Sharding if global set is too large",
+      "Tie-breaking / update frequency",
+    ],
   },
   {
     id: "pastebin",
@@ -115,6 +178,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a code/text sharing service like Pastebin. Users can paste text up to 10MB and share a link. Pastes may expire.",
     keyChallenge:
       "Object storage for paste content, relational DB for metadata. CDN or cache for popular pastes. Read heavy — cache popular pastes.",
+    rubric: [
+      "Metadata DB vs blob/object storage split",
+      "Short ID generation",
+      "Expiry / TTL handling",
+      "Caching for popular pastes",
+      "Size limits and abuse considerations",
+    ],
   },
   {
     id: "file-storage",
@@ -126,6 +196,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a file storage and sync service like Google Drive or Dropbox. Files up to 50GB. Multi-device sync.",
     keyChallenge:
       "Metadata service (DB) separate from blob store (S3-like). Block deduplication. Multipart upload. Upload URL → object store directly, not through app server.",
+    rubric: [
+      "Direct-to-object-store uploads (presigned URLs)",
+      "Metadata service separate from blobs",
+      "Multipart / resumable uploads for large files",
+      "Sync / conflict strategy across devices",
+      "Deduplication or block-level storage notes",
+    ],
   },
   {
     id: "distributed-cache",
@@ -137,6 +214,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a distributed in-memory cache like Memcached or Redis cluster. Must support millions of requests per second.",
     keyChallenge:
       "Consistent hashing minimises cache invalidation on node add/remove. Cache stampede prevention (lock / PER algorithm).",
+    rubric: [
+      "Consistent hashing / key distribution",
+      "Eviction policy (LRU etc.)",
+      "Replication vs pure cache trade-off",
+      "Stampede / thundering herd mitigation",
+      "Node failure and rebalance behavior",
+    ],
   },
   {
     id: "rate-limiter",
@@ -148,6 +232,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a distributed rate limiter that enforces per-user and per-IP request limits across a fleet of API servers.",
     keyChallenge:
       "Token bucket vs sliding window. Redis atomic increment. Distributed consistency without a hot key bottleneck.",
+    rubric: [
+      "Algorithm choice (token bucket / sliding window) with rationale",
+      "Central store for counters (e.g. Redis)",
+      "Per-user and per-IP dimensions",
+      "Atomic increment / race safety",
+      "Hot-key or shard considerations",
+    ],
   },
   {
     id: "task-scheduler",
@@ -159,6 +250,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a distributed task scheduler that fires jobs at scheduled times across thousands of tasks.",
     keyChallenge:
       "Distributed lock on scheduler prevents duplicate runs. Idempotency key on each task execution.",
+    rubric: [
+      "How jobs are stored and polled/triggered",
+      "Distributed lock to avoid double-fire",
+      "Worker execution via queue",
+      "Idempotent task handlers",
+      "Missed-run / catch-up policy",
+    ],
   },
   {
     id: "payment-system",
@@ -170,6 +268,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Design a payment processing system. Handle card charges, refunds, and daily settlement. Must be exactly-once.",
     keyChallenge:
       "Idempotency keys prevent double charges on retry. Acquirer circuit breaker. Settlement reconciliation. Hold seats for checkout window (e.g. 10 minutes) then release.",
+    rubric: [
+      "Idempotency keys on charge APIs",
+      "Ledger / transaction state machine",
+      "Retries with circuit breaker to acquirer",
+      "Refunds and reconciliation",
+      "Exactly-once / at-least-once trade-offs explained",
+    ],
   },
   {
     id: "open-canvas",
@@ -181,6 +286,13 @@ export const INTERVIEW_PROBLEMS: InterviewProblem[] = [
       "Open canvas — no specific problem constraints. Design any system architecture you want to practice.",
     keyChallenge:
       "Open-ended. Use this to sketch any architecture or practice drawing with the component palette.",
+    rubric: [
+      "Stated requirements and scale assumptions",
+      "Clear request path from client to storage",
+      "Called out at least one bottleneck",
+      "Mentioned failure / redundancy",
+      "Named trade-offs explicitly",
+    ],
   },
 ];
 

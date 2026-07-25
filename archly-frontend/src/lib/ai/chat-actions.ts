@@ -3,9 +3,11 @@
  */
 
 import { getChaosType } from "@/lib/simulation/chaos";
+import { getComponent } from "@/lib/components-registry";
 import { useSimulationStore } from "@/store/simulation.store";
+import { useFlowStore } from "@/store/flow.store";
 import type { ChaosType } from "@/types";
-import type { DiagramSnapshot } from "@/lib/ai/diagram-snapshot";
+import type { CanvasKind, DiagramSnapshot } from "@/lib/ai/diagram-snapshot";
 
 export type ChatAction =
   | {
@@ -21,7 +23,17 @@ export type ChatAction =
       };
     }
   | { type: "remove_chaos"; injectionId?: string; nodeId?: string; nodeLabel?: string }
-  | { type: "clear_chaos" };
+  | { type: "clear_chaos" }
+  | { type: "add_node"; componentId: string; label?: string; x?: number; y?: number }
+  | { type: "remove_node"; nodeId?: string; nodeLabel?: string }
+  | {
+      type: "connect" | "disconnect";
+      source?: string;
+      target?: string;
+      sourceLabel?: string;
+      targetLabel?: string;
+    }
+  | { type: "relabel"; nodeId?: string; nodeLabel?: string; label: string };
 
 const CHAOS_TYPES = new Set<string>([
   "crash",
@@ -74,6 +86,20 @@ function nodeLabel(snapshot: DiagramSnapshot, nodeId: string): string {
   return snapshot.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
 }
 
+function flowSnapshot(snapshot: DiagramSnapshot): DiagramSnapshot {
+  const { nodes, edges, selectedNodeId } = useFlowStore.getState();
+  return {
+    ...snapshot,
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      label: node.data?.label ?? node.id,
+      componentId: node.data?.componentId,
+    })),
+    edges: edges.map((edge) => ({ source: edge.source, target: edge.target })),
+    selection: selectedNodeId ? [selectedNodeId] : [],
+  };
+}
+
 export interface ActionResult {
   ok: boolean;
   message: string;
@@ -81,12 +107,115 @@ export interface ActionResult {
 
 export function applyChatActions(
   actions: ChatAction[],
-  snapshot: DiagramSnapshot
+  snapshot: DiagramSnapshot,
+  canvas: CanvasKind = "flow"
 ): ActionResult[] {
   const sim = useSimulationStore.getState();
   const results: ActionResult[] = [];
 
   for (const action of actions) {
+    if (
+      action.type === "add_node" ||
+      action.type === "remove_node" ||
+      action.type === "connect" ||
+      action.type === "disconnect" ||
+      action.type === "relabel"
+    ) {
+      if (canvas !== "flow") {
+        results.push({ ok: false, message: "Diagram edits are currently available on Flow" });
+        continue;
+      }
+
+      const flow = useFlowStore.getState();
+      const liveSnapshot = flowSnapshot(snapshot);
+
+      if (action.type === "add_node") {
+        const component = getComponent(action.componentId);
+        if (!component) {
+          results.push({ ok: false, message: `Unknown component: ${action.componentId}` });
+          continue;
+        }
+        const rightmostX =
+          flow.nodes.length > 0
+            ? Math.max(...flow.nodes.map((node) => Number(node.position?.x) || 0)) + 220
+            : 80;
+        const id = flow.addNode(
+          component.id,
+          action.label?.trim() || component.name,
+          component.color,
+          component.strokeColor,
+          component.icon,
+          { x: action.x ?? rightmostX, y: action.y ?? 120 }
+        );
+        results.push({ ok: true, message: `Added ${action.label?.trim() || component.name} (${id})` });
+        continue;
+      }
+
+      if (action.type === "remove_node") {
+        const nodeId = resolveNodeId(liveSnapshot, action.nodeId, action.nodeLabel);
+        if (!nodeId) {
+          results.push({ ok: false, message: "Could not find node to remove" });
+          continue;
+        }
+        const label = nodeLabel(liveSnapshot, nodeId);
+        flow.removeNode(nodeId);
+        results.push({ ok: true, message: `Removed ${label}` });
+        continue;
+      }
+
+      if (action.type === "relabel") {
+        const nodeId = resolveNodeId(liveSnapshot, action.nodeId, action.nodeLabel);
+        const label = action.label?.trim();
+        if (!nodeId || !label) {
+          results.push({ ok: false, message: "Could not find node or label is empty" });
+          continue;
+        }
+        flow.updateNodeLabel(nodeId, label);
+        results.push({ ok: true, message: `Relabeled node to ${label}` });
+        continue;
+      }
+
+      const source = resolveNodeId(liveSnapshot, action.source, action.sourceLabel);
+      const target = resolveNodeId(liveSnapshot, action.target, action.targetLabel);
+      if (!source || !target) {
+        results.push({ ok: false, message: "Could not resolve both connection endpoints" });
+        continue;
+      }
+
+      if (action.type === "connect") {
+        const exists = flow.edges.some(
+          (edge) => edge.source === source && edge.target === target
+        );
+        if (exists) {
+          results.push({ ok: false, message: "Connection already exists" });
+          continue;
+        }
+        flow.onConnect({ source, target });
+        results.push({
+          ok: true,
+          message: `Connected ${nodeLabel(liveSnapshot, source)} → ${nodeLabel(liveSnapshot, target)}`,
+        });
+        continue;
+      }
+
+      const matchingEdges = flow.edges.filter(
+        (edge) => edge.source === source && edge.target === target
+      );
+      if (matchingEdges.length === 0) {
+        results.push({ ok: false, message: "Connection not found" });
+        continue;
+      }
+      const edgeIds = new Set(matchingEdges.map((edge) => edge.id));
+      useFlowStore.setState((state) => ({
+        edges: state.edges.filter((edge) => !edgeIds.has(edge.id)),
+      }));
+      results.push({
+        ok: true,
+        message: `Disconnected ${nodeLabel(liveSnapshot, source)} → ${nodeLabel(liveSnapshot, target)}`,
+      });
+      continue;
+    }
+
     if (action.type === "clear_chaos") {
       const n = sim.activeInjections.length;
       sim.clearAllChaos();

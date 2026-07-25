@@ -46,11 +46,39 @@ export default function LoginPage() {
         borderRadius: 14,
         boxShadow: "var(--pd-shadow-lg)",
         overflow: "hidden",
+        position: "relative",
       }}>
+        <Link
+          href="/canvas"
+          aria-label="Close"
+          title="Back to canvas"
+          style={{
+            position: "absolute",
+            top: 10,
+            right: 10,
+            zIndex: 2,
+            width: 30,
+            height: 30,
+            borderRadius: 8,
+            border: "1px solid var(--pd-border)",
+            background: "var(--pd-bg)",
+            color: "var(--pd-text-muted)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            textDecoration: "none",
+            fontSize: 13,
+            fontWeight: 700,
+          }}
+        >
+          ✕
+        </Link>
+
         {/* Tab bar */}
         <div style={{
           display: "flex",
           borderBottom: "1px solid var(--pd-border)",
+          paddingRight: 40,
         }}>
           {(["signup", "login"] as const).map((t) => (
             <button

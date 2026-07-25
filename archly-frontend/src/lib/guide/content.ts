@@ -25,6 +25,13 @@ export interface LabNodeRole {
   whyHere: string;
 }
 
+export interface LabQuizQuestion {
+  question: string;
+  options: string[];
+  /** Index into options */
+  answer: number;
+}
+
 export interface LabDefinition {
   id: string;
   title: string;
@@ -45,6 +52,8 @@ export interface LabDefinition {
   architectureNote: string;
   steps: LabStep[];
   tryIt: string;
+  /** Optional multiple-choice quiz scored locally in GuidePanel */
+  quiz?: LabQuizQuestion[];
 }
 
 export const CATEGORY_INTROS: Record<
@@ -315,6 +324,23 @@ export const GUIDE_LABS: LabDefinition[] = [
       },
     ],
     tryIt: "Start simulation, raise traffic to 3×. Which node becomes the bottleneck, and why?",
+    quiz: [
+      {
+        question: "What is the usual role of the API gateway in this path?",
+        options: [
+          "Store durable user data",
+          "Centralize auth, rate limits, and routing",
+          "Replace the database",
+          "Render the browser UI",
+        ],
+        answer: 1,
+      },
+      {
+        question: "Under rising traffic, which hop often saturates first?",
+        options: ["CDN only", "The SQL database", "DNS", "The browser"],
+        answer: 1,
+      },
+    ],
   },
   {
     id: "caching",
@@ -658,5 +684,263 @@ export const GUIDE_LABS: LabDefinition[] = [
       },
     ],
     tryIt: "If p99 latency doubles but error rate is flat, which tool do you open first — metrics, traces, or logs — and why?",
+    quiz: [
+      {
+        question: "Which signal best answers “where did the time go?” across services?",
+        options: ["Metrics dashboards", "Distributed traces", "CPU alerts alone", "Disk IOPS"],
+        answer: 1,
+      },
+      {
+        question: "What should on-call alerts primarily track?",
+        options: ["Vanity CPU graphs", "SLO burn / user impact", "Every deploy", "Cache hit rate only"],
+        answer: 1,
+      },
+    ],
+  },
+  {
+    id: "read-replicas",
+    title: "Scale reads with replicas",
+    subtitle: "App → Primary SQL + Read Replica",
+    duration: "8 min",
+    level: "intermediate",
+    architectureWhy:
+      "When reads dominate, a single primary DB becomes the bottleneck. Read replicas serve SELECT traffic while the primary owns writes. You trade a bit of replication lag for horizontal read scale.",
+    learningGoals: [
+      "Separate write path from read path",
+      "Name replication lag as the main trade-off",
+      "Know when not to read from a replica",
+    ],
+    nodes: ["web_browser", "api_gateway", "app_server", "sql_db", "sql_db"],
+    edges: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [2, 4],
+    ],
+    nodeRoles: [
+      {
+        componentId: "web_browser",
+        role: "Entry point",
+        whyHere: "User traffic — mostly reads for feeds/lists.",
+      },
+      {
+        componentId: "api_gateway",
+        role: "Front door",
+        whyHere: "Auth and routing before the app tier.",
+      },
+      {
+        componentId: "app_server",
+        role: "Routing logic",
+        whyHere: "Sends writes to primary, reads to replica (with lag-aware exceptions).",
+      },
+      {
+        componentId: "sql_db",
+        role: "Primary (writes)",
+        whyHere: "Source of truth for INSERT/UPDATE/DELETE.",
+      },
+      {
+        componentId: "sql_db",
+        role: "Read replica",
+        whyHere: "Serves SELECTs; may lag behind primary by milliseconds–seconds.",
+      },
+    ],
+    architectureNote:
+      "ARCHITECTURE — Read replicas\n\nWhy: scale reads without sharding yet.\nWrites → Primary. Reads → Replica.\n\nWatch: replication lag after a write — don’t read-your-writes from a stale replica.\nInterview line: “Replica for throughput; primary for consistency.”",
+    steps: [
+      {
+        title: "Two DB roles",
+        body: "Same SQL engine, different jobs: primary takes writes; replica mirrors and serves reads.",
+      },
+      {
+        title: "App routing",
+        body: "Connection pools / ORMs often expose read vs write endpoints. Route carefully after writes.",
+      },
+      {
+        title: "Lag cases",
+        body: "After creating an account, read-your-write should hit the primary (or wait for lag).",
+      },
+    ],
+    tryIt: "Raise traffic in simulation. Which DB node saturates first if everything still hits the primary?",
+    quiz: [
+      {
+        question: "Where should INSERT/UPDATE traffic go?",
+        options: ["Any replica", "The primary only", "CDN", "Message queue"],
+        answer: 1,
+      },
+      {
+        question: "Main downside of serving reads from a replica?",
+        options: ["Higher disk cost only", "Replication lag / stale reads", "No indexes", "No TLS"],
+        answer: 1,
+      },
+    ],
+  },
+  {
+    id: "rate-limit-waf",
+    title: "Protect the edge",
+    subtitle: "Browser → WAF → Gateway → App",
+    duration: "7 min",
+    level: "intermediate",
+    architectureWhy:
+      "Public APIs attract bots, scrapers, and abusive clients. A WAF and rate limits at the edge drop bad traffic before it burns app CPU or DB connections.",
+    learningGoals: [
+      "Explain defense-in-depth at the edge",
+      "Distinguish WAF rules vs application rate limits",
+      "Argue why origin should still validate input",
+    ],
+    nodes: ["web_browser", "waf", "api_gateway", "app_server", "sql_db"],
+    edges: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 4],
+    ],
+    nodeRoles: [
+      {
+        componentId: "web_browser",
+        role: "Client (good + bad)",
+        whyHere: "Includes legitimate users and abusive traffic.",
+      },
+      {
+        componentId: "waf",
+        role: "Edge filter",
+        whyHere: "Blocks OWASP-style attacks and known bad IPs early.",
+      },
+      {
+        componentId: "api_gateway",
+        role: "Auth + throttle",
+        whyHere: "Per-user / per-key rate limits and JWT validation.",
+      },
+      {
+        componentId: "app_server",
+        role: "Business logic",
+        whyHere: "Still validates input — never trust the edge alone.",
+      },
+      {
+        componentId: "sql_db",
+        role: "Source of truth",
+        whyHere: "Protected by upstream throttles from connection storms.",
+      },
+    ],
+    architectureNote:
+      "ARCHITECTURE — Edge protection\n\nWhy: drop abuse before origin cost.\nFlow: Browser → WAF → Gateway (rate limit) → App → SQL.\n\nInterview line: “WAF for patterns, gateway for quotas, app for correctness.”",
+    steps: [
+      {
+        title: "Layers",
+        body: "WAF looks at request shape/signatures. Gateway enforces auth + quotas. App still validates.",
+      },
+      {
+        title: "Rate limits",
+        body: "Pick keys carefully (user id, API key, IP). Too coarse → punish shared NATs; too fine → easy to bypass.",
+      },
+      {
+        title: "Chaos thinking",
+        body: "Simulate a surge. Without limits, app and SQL die together — with limits, you shed load gracefully.",
+      },
+    ],
+    tryIt: "Inject a traffic surge. How would you tune gateway rate limits vs scaling app replicas?",
+    quiz: [
+      {
+        question: "Best place for per-API-key quotas?",
+        options: ["Only inside SQL triggers", "API gateway / edge", "CDN static cache", "Object store"],
+        answer: 1,
+      },
+      {
+        question: "Why keep validation in the app if WAF exists?",
+        options: [
+          "WAF is enough alone",
+          "Defense in depth — WAF rules miss business cases",
+          "Apps should ignore auth",
+          "SQL should parse HTTP",
+        ],
+        answer: 1,
+      },
+    ],
+  },
+  {
+    id: "llm-gateway",
+    title: "Safe LLM feature",
+    subtitle: "App → LLM Gateway → Model + Memory",
+    duration: "9 min",
+    level: "advanced",
+    architectureWhy:
+      "AI features need cost control, latency budgets, and safety. An LLM gateway centralizes auth, rate limits, prompt logging, and model routing; memory stores conversation context separately from the model.",
+    learningGoals: [
+      "Place a gateway in front of model calls",
+      "Separate durable memory from ephemeral prompts",
+      "Name cost, latency, and safety as first-class constraints",
+    ],
+    nodes: ["web_browser", "api_gateway", "app_server", "llm_gateway", "vector_db"],
+    edges: [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [2, 4],
+    ],
+    nodeRoles: [
+      {
+        componentId: "web_browser",
+        role: "Chat UI",
+        whyHere: "User sends prompts and expects streaming replies.",
+      },
+      {
+        componentId: "api_gateway",
+        role: "Product front door",
+        whyHere: "Auth the user before any expensive model spend.",
+      },
+      {
+        componentId: "app_server",
+        role: "Orchestrator",
+        whyHere: "Builds prompts, retrieves memory, enforces product rules.",
+      },
+      {
+        componentId: "llm_gateway",
+        role: "Model front door",
+        whyHere: "Quotas, caching, provider failover, safety filters.",
+      },
+      {
+        componentId: "vector_db",
+        role: "Memory / RAG store",
+        whyHere: "Embeddings for retrieval — not the model weights.",
+      },
+    ],
+    architectureNote:
+      "ARCHITECTURE — LLM feature path\n\nWhy: control cost + safety of model calls.\nUser → Gateway → App → (Vector memory + LLM gateway).\n\nInterview line: “Never call the model from the browser with a secret key.”",
+    steps: [
+      {
+        title: "Never expose keys",
+        body: "Browser talks to your API. Your backend (via LLM gateway) holds provider credentials.",
+      },
+      {
+        title: "Memory vs model",
+        body: "Vector DB holds embeddings/docs. The model is stateless per call unless you send history.",
+      },
+      {
+        title: "Budgets",
+        body: "Cap tokens, cache identical prompts, and fail soft when the provider is down.",
+      },
+    ],
+    tryIt: "If the model provider times out, what does the user see, and where do you put retries?",
+    quiz: [
+      {
+        question: "Where should the LLM API key live?",
+        options: [
+          "In the browser localStorage",
+          "Only on the server / LLM gateway",
+          "In the CDN config as a public header",
+          "Inside the vector DB documents",
+        ],
+        answer: 1,
+      },
+      {
+        question: "Primary job of an LLM gateway?",
+        options: [
+          "Replace the app server",
+          "Centralize quotas, routing, and safety for model calls",
+          "Store user passwords",
+          "Serve static JS",
+        ],
+        answer: 1,
+      },
+    ],
   },
 ];

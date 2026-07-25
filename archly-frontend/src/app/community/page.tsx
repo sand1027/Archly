@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useDesigns, useForkDesign, useStarDesign } from "@/hooks/useDesigns";
 import DesignCard from "@/components/community/DesignCard";
 import { useAuth } from "@/providers/auth-provider";
 import { useRouter } from "next/navigation";
-import { useCanvasStore } from "@/store/canvas.store";
-import type { ExcalidrawElement } from "@/types";
 
 const TAGS = [
   "All",
@@ -23,17 +21,27 @@ const TAGS = [
 
 export default function CommunityPage() {
   const [activeTag, setActiveTag] = useState("All");
+  const [search, setSearch] = useState("");
   const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const { setElements } = useCanvasStore();
+
+  const trimmedSearch = search.trim();
 
   const { data, isLoading, error } = useDesigns({
     tag: activeTag === "All" ? undefined : activeTag.toLowerCase(),
     pageSize: 24,
+    q: trimmedSearch || undefined,
   });
 
   const forkMutation = useForkDesign();
   const starMutation = useStarDesign();
+
+  const designs = useMemo(() => {
+    const list = data?.designs ?? [];
+    if (!trimmedSearch) return list;
+    const q = trimmedSearch.toLowerCase();
+    return list.filter((d) => d.title.toLowerCase().includes(q));
+  }, [data?.designs, trimmedSearch]);
 
   const handleFork = async (id: string) => {
     if (!isAuthenticated) {
@@ -41,11 +49,7 @@ export default function CommunityPage() {
       return;
     }
     const forked = await forkMutation.mutateAsync(id);
-    // Load forked design elements onto canvas then redirect
-    if (forked?.elements) {
-      setElements(forked.elements as ExcalidrawElement[]);
-    }
-    router.push("/canvas");
+    router.push(`/canvas?designId=${forked.id}`);
   };
 
   const handleStar = (id: string) => {
@@ -126,6 +130,28 @@ export default function CommunityPage() {
           </p>
         </div>
 
+        {/* Search */}
+        <div style={{ marginBottom: 20 }}>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search designs by title…"
+            aria-label="Search designs by title"
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              padding: "10px 14px",
+              borderRadius: "var(--pd-radius)",
+              border: "1px solid var(--pd-border)",
+              background: "var(--pd-surface)",
+              color: "var(--pd-text)",
+              fontSize: 14,
+              outline: "none",
+            }}
+          />
+        </div>
+
         {/* Tag filter */}
         <div
           style={{
@@ -183,7 +209,7 @@ export default function CommunityPage() {
             <div style={{ fontSize: 32, marginBottom: 8 }}>⚠️</div>
             <div>Failed to load designs. Is the backend running?</div>
           </div>
-        ) : !data?.designs?.length ? (
+        ) : !designs.length ? (
           <div
             style={{
               textAlign: "center",
@@ -193,25 +219,31 @@ export default function CommunityPage() {
           >
             <div style={{ fontSize: 40, marginBottom: 12 }}>🎨</div>
             <div style={{ fontWeight: 700, marginBottom: 4 }}>
-              No published designs yet. Be the first to publish!
+              {trimmedSearch
+                ? "No designs match your search"
+                : "No published designs yet. Be the first to publish!"}
             </div>
             <div style={{ fontSize: 13, marginBottom: 16 }}>
-              Draw your architecture on the canvas and click Publish.
+              {trimmedSearch
+                ? "Try a different title or clear the search."
+                : "Draw your architecture on the canvas and click Publish."}
             </div>
-            <Link
-              href="/canvas"
-              style={{
-                padding: "8px 20px",
-                borderRadius: "var(--pd-radius)",
-                background: "var(--pd-brand)",
-                color: "#fff",
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 700,
-              }}
-            >
-              Open Canvas →
-            </Link>
+            {!trimmedSearch && (
+              <Link
+                href="/canvas"
+                style={{
+                  padding: "8px 20px",
+                  borderRadius: "var(--pd-radius)",
+                  background: "var(--pd-brand)",
+                  color: "#fff",
+                  textDecoration: "none",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                Open Canvas →
+              </Link>
+            )}
           </div>
         ) : (
           <div
@@ -221,7 +253,7 @@ export default function CommunityPage() {
               gap: 16,
             }}
           >
-            {data.designs.map((design) => (
+            {designs.map((design) => (
               <DesignCard
                 key={design.id}
                 design={design}
@@ -233,7 +265,7 @@ export default function CommunityPage() {
         )}
 
         {/* Pagination hint */}
-        {data && data.total > (data.designs?.length ?? 0) && (
+        {data && data.total > designs.length && !trimmedSearch && (
           <div
             style={{
               textAlign: "center",
@@ -242,7 +274,7 @@ export default function CommunityPage() {
               fontSize: 13,
             }}
           >
-            Showing {data.designs?.length} of {data.total} designs
+            Showing {designs.length} of {data.total} designs
           </div>
         )}
       </div>

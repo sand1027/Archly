@@ -44,6 +44,7 @@ type Design struct {
 	StarCount   int32           `json:"star_count"`
 	ViewCount   int32           `json:"view_count"`
 	Published   bool            `json:"published"`
+	Kind        string          `json:"kind"`
 	CreatedAt   time.Time       `json:"created_at"`
 	UpdatedAt   time.Time       `json:"updated_at"`
 }

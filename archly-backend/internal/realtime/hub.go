@@ -130,7 +130,7 @@ func (h *Hub) handleInbound(ctx context.Context, msg inboundMsg) {
 		default:
 		}
 
-	case MsgElementUpdate, MsgCursorMove, MsgUserJoin:
+	case MsgElementUpdate, MsgFlowUpdate, MsgCursorMove, MsgUserJoin:
 		// Broadcast to everyone else in the room
 		h.broadcastToRoom(msg.client.roomID, msg.client, msg.data)
 

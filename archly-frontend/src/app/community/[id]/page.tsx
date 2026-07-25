@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import CommunityDesignDetail from "./CommunityDesignDetail";
 
 interface Props {
   params: Promise<{ id: string }>;
@@ -12,28 +13,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /**
- * Design detail page — shows design info + fork button.
- * Canvas preview + full design content populated in Phase 12.
+ * Published design detail — open on canvas or fork a private copy.
  */
 export default async function CommunityDesignPage({ params }: Props) {
   const { id } = await params;
-
-  return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "var(--pd-bg)",
-        color: "var(--pd-text)",
-        fontFamily: "Assistant, sans-serif",
-        padding: "80px 24px 48px",
-        maxWidth: 960,
-        margin: "0 auto",
-      }}
-    >
-      <p style={{ color: "var(--pd-text-muted)", marginBottom: 24 }}>
-        Design ID: {id}
-      </p>
-      <div style={{ color: "var(--pd-text-subtle)" }}>Loading design…</div>
-    </main>
-  );
+  return <CommunityDesignDetail id={id} />;
 }

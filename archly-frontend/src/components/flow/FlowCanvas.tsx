@@ -48,7 +48,7 @@ const EDGE_TYPES = { flowEdge: FlowEdge as any } as const;
 // ─── Inner canvas (needs useReactFlow hook — must be inside ReactFlowProvider)
 
 function FlowCanvasInner() {
-  const { screenToFlowPosition, getEdges } = useReactFlow();
+  const { screenToFlowPosition, getEdges, fitView } = useReactFlow();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
 
@@ -56,10 +56,31 @@ function FlowCanvasInner() {
     nodes, edges,
     onNodesChange, onEdgesChange, onConnect,
     addNode, insertNodeOnEdge, removeNode,
-    setSelectedNodeId,
+    setSelectedNodeId, undo, redo, pushHistory,
+    fitViewNonce,
   } = useFlowStore();
 
   const isRunning = useSimulationStore((s) => s.isRunning);
+
+  // Center graph after programmatic loads (AI / Mermaid / History / labs).
+  // Retries matter: Flow is often display:none until the tab switches.
+  useEffect(() => {
+    if (!fitViewNonce || nodes.length === 0) return;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      fitView({ padding: 0.25, duration: 280, maxZoom: 1.15 });
+    };
+    const t1 = window.setTimeout(run, 50);
+    const t2 = window.setTimeout(run, 200);
+    const t3 = window.setTimeout(run, 450);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [fitViewNonce, nodes.length, fitView]);
 
   // Track the edge being hovered during a drag — for smart insertion
   const [dragOverEdgeId, setDragOverEdgeId] = useState<string | null>(null);
@@ -75,6 +96,27 @@ function FlowCanvasInner() {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
+
+  // Undo / redo shortcuts
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || target?.isContentEditable) return;
+
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+      if (e.key === "z" && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      } else if ((e.key === "z" && e.shiftKey) || e.key === "y") {
+        e.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   // ── Drop handler ──────────────────────────────────────────────────────
 
@@ -140,16 +182,39 @@ function FlowCanvasInner() {
     setContextMenu({ nodeId: node.id, x: e.clientX, y: e.clientY });
   }, []);
 
-  // ── Keyboard delete ─────────────────────────────────────────────────────
+  // ── Keyboard delete + undo/redo ─────────────────────────────────────────
 
   const onKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+      e.preventDefault();
+      if (e.shiftKey) useFlowStore.getState().redo();
+      else useFlowStore.getState().undo();
+      return;
+    }
     if (e.key === "Delete" || e.key === "Backspace") {
-      const { nodes: ns, edges: es } = useFlowStore.getState();
+      const { nodes: ns } = useFlowStore.getState();
       // Remove selected nodes
-      ns.filter((n) => n.selected).forEach((n) => removeNode(n.id));
+      ns.filter((n: { selected?: boolean; id: string }) => n.selected).forEach((n) =>
+        removeNode(n.id)
+      );
       // Remove selected edges (handled by RF via onEdgesChange)
     }
   }, [removeNode]);
+
+  // Also listen globally while Flow tab is visible (focus can leave the div)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) useFlowStore.getState().redo();
+        else useFlowStore.getState().undo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   // ── Edge hover highlight (visual feedback for smart insertion) ──────────
 
@@ -184,6 +249,7 @@ function FlowCanvasInner() {
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         onNodeContextMenu={onNodeContextMenu}
+        onNodeDragStart={() => pushHistory()}
         nodeTypes={NODE_TYPES}
         edgeTypes={EDGE_TYPES}
         defaultEdgeOptions={{

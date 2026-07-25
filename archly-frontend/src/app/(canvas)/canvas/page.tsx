@@ -31,17 +31,44 @@ import MermaidEditor from "@/components/mermaid/MermaidEditor";
 import AiDiagramPanel from "@/components/ai/AiDiagramPanel";
 import CanvasChatPanel from "@/components/ai/CanvasChatPanel";
 import GuidePanel from "@/components/guide/GuidePanel";
+import ConfirmModal from "@/components/ui/ConfirmModal";
+import HistoryPanel from "@/components/canvas/HistoryPanel";
+import SaveSessionModal from "@/components/canvas/SaveSessionModal";
+import ExportMenu from "@/components/canvas/ExportMenu";
+import ShortcutsModal from "@/components/canvas/ShortcutsModal";
+import BottleneckReport from "@/components/simulation/BottleneckReport";
 
 import { useCanvasStore } from "@/store/canvas.store";
 import { useSimulationStore } from "@/store/simulation.store";
 import { useFlowStore } from "@/store/flow.store";
 import { useAuth } from "@/providers/auth-provider";
 import { useCollaboration } from "@/hooks/useCollaboration";
-import { usePublishDesign } from "@/hooks/useDesigns";
+import { usePublishDesign, useSaveDesign, useUpdateDesign } from "@/hooks/useDesigns";
 import { shareApi } from "@/lib/api/endpoints";
+import {
+  snapshotActive,
+  hydrateDesign,
+  isActiveEmpty,
+  writeLocalDraft,
+  readLocalDraft,
+  hydrateSnapshot,
+  clearLocalDraft,
+} from "@/lib/session/sessions";
 import { getComponent } from "@/lib/components-registry";
 import { getExcalidrawAPI } from "@/lib/excalidraw-api";
-import type { ExcalidrawElement, ComponentDefinition } from "@/types";
+import { designsApi } from "@/lib/api/endpoints";
+import type {
+  ExcalidrawElement,
+  ComponentDefinition,
+  DesignKind,
+  SavedDesign,
+} from "@/types";
+
+interface ActiveSession {
+  id: string;
+  title: string;
+  kind: DesignKind;
+}
 
 // ── Lazy-loaded canvases ──────────────────────────────────────────────────
 const ExcalidrawWrapper = dynamic(
@@ -75,13 +102,13 @@ export default function CanvasPage() {
     setActiveTab(tab);
   }, []);
 
-  /** Wipe the active canvas/flow in one shot (with confirm). */
+  /** Open clear confirmation modal (no browser alerts). */
+  const requestClearActive = useCallback(() => {
+    setClearConfirmOpen(true);
+  }, []);
+
   const handleClearActive = useCallback(() => {
-    const label = activeTab === "flow" ? "Flow diagram" : "Canvas";
-    const ok = window.confirm(
-      `Clear the entire ${label}? This removes all nodes and connections. Chaos injections will also be cleared.`
-    );
-    if (!ok) return;
+    setClearConfirmOpen(false);
 
     if (activeTab === "flow") {
       useFlowStore.getState().reset();
@@ -91,7 +118,6 @@ export default function CanvasPage() {
       api?.history?.clear?.();
       useCanvasStore.getState().setElements([]);
       useCanvasStore.getState().setSelectedElementIds([]);
-      // Drop per-node configs without wiping collab room state
       const configs = useCanvasStore.getState().nodeConfigs;
       for (const id of Object.keys(configs)) {
         useCanvasStore.getState().removeNodeConfig(id);
@@ -104,6 +130,11 @@ export default function CanvasPage() {
     useSimulationStore.getState().setMetrics({});
     useSimulationStore.getState().updatePackets([]);
     useSimulationStore.getState().setBottlenecks([]);
+
+    // Forget the session bound to the tab we just cleared
+    setCurrentSession((s) =>
+      s && s.kind === (activeTab === "flow" ? "flow" : "canvas") ? null : s
+    );
   }, [activeTab]);
 
   // ── Panel / modal states ──────────────────────────────────────────────
@@ -112,9 +143,27 @@ export default function CanvasPage() {
   const [chatOpen, setChatOpen]       = useState(false);
   const [guideOpen, setGuideOpen]     = useState(false);
   const [chaosOpen, setChaosOpen]     = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [shareUrl, setShareUrl]       = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [publishMsg, setPublishMsg]   = useState<string | null>(null);
+
+  // ── Save / History sessions ───────────────────────────────────────────
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
+  const [saveAsMode, setSaveAsMode] = useState(false);
+  const [currentSession, setCurrentSession] = useState<ActiveSession | null>(null);
+  const [pendingOpen, setPendingOpen] = useState<SavedDesign | null>(null);
+  const [draftPrompt, setDraftPrompt] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [bottleneckOpen, setBottleneckOpen] = useState(false);
+  const saveMutation = useSaveDesign();
+  const updateMutation = useUpdateDesign();
+  const currentSessionRef = useRef(currentSession);
+  currentSessionRef.current = currentSession;
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
 
   // ── Store subscriptions — ONLY rarely-changing values ─────────────────
   const activeInjections = useSimulationStore((s) => s.activeInjections);
@@ -122,12 +171,48 @@ export default function CanvasPage() {
 
   // ── Collab ────────────────────────────────────────────────────────────
   const roomId = (useCanvasStore.getState().appState as { roomId?: string })?.roomId ?? null;
-  const { sendElementUpdate } = useCollaboration({ roomId, enabled: !!roomId });
+  const { sendElementUpdate, sendFlowUpdate, status: collabStatus } = useCollaboration({
+    roomId,
+    enabled: !!roomId,
+  });
   const sendCollabRef = useRef(sendElementUpdate);
   useEffect(() => { sendCollabRef.current = sendElementUpdate; }, [sendElementUpdate]);
   const stableSendCollab = useCallback((els: ExcalidrawElement[]) => {
     sendCollabRef.current(els);
   }, []);
+
+  // Broadcast Flow changes when live
+  useEffect(() => {
+    if (!roomId || !sendFlowUpdate) return;
+    const unsub = useFlowStore.subscribe((state, prev) => {
+      if (state.nodes === prev.nodes && state.edges === prev.edges) return;
+      sendFlowUpdate(state.nodes, state.edges);
+    });
+    return unsub;
+  }, [roomId, sendFlowUpdate]);
+
+  const startLiveRoom = useCallback(() => {
+    const id = `room-${crypto.randomUUID().slice(0, 8)}`;
+    useCanvasStore.getState().setAppState({ roomId: id });
+    useCanvasStore.getState().setRoomId(id);
+    setPublishMsg(`Live room: ${id}`);
+    setTimeout(() => setPublishMsg(null), 3000);
+    void navigator.clipboard.writeText(`${window.location.origin}/canvas?room=${id}`).catch(() => null);
+  }, []);
+
+  const joinLiveFromQuery = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const room = params.get("room");
+    if (room) {
+      useCanvasStore.getState().setAppState({ roomId: room });
+      useCanvasStore.getState().setRoomId(room);
+      window.history.replaceState({}, "", "/canvas");
+    }
+  }, []);
+
+  useEffect(() => {
+    joinLiveFromQuery();
+  }, [joinLiveFromQuery]);
 
   const publishMutation = usePublishDesign();
 
@@ -240,6 +325,186 @@ export default function CanvasPage() {
     }
   }, [isAuthenticated, publishMutation, markClean, router]);
 
+  // ── Save session ──────────────────────────────────────────────────────
+  const flashMsg = useCallback((msg: string) => {
+    setPublishMsg(msg);
+    setTimeout(() => setPublishMsg(null), 2500);
+  }, []);
+
+  const persistSession = useCallback(
+    async (title: string, asNew = false) => {
+      const kind: DesignKind = activeTab === "flow" ? "flow" : "canvas";
+      const snapshot = snapshotActive(kind);
+      const body = {
+        title,
+        description: "",
+        tags: [],
+        kind,
+        elements: snapshot.elements,
+        app_state: snapshot.app_state,
+      };
+      try {
+        const reuse = !asNew && currentSession && currentSession.kind === kind;
+        const saved = reuse
+          ? await updateMutation.mutateAsync({ id: currentSession.id, body })
+          : await saveMutation.mutateAsync(body);
+        setCurrentSession({ id: saved.id, title: saved.title, kind });
+        markClean();
+        clearLocalDraft();
+        flashMsg(reuse ? "Session updated ✓" : "Session saved ✓");
+      } catch (err) {
+        const status = (err as { status?: number })?.status;
+        if (status === 401) {
+          flashMsg("Sign in required to save — redirecting…");
+          router.push("/login");
+          return;
+        }
+        flashMsg("Failed to save. Please try again.");
+      }
+    },
+    [activeTab, currentSession, saveMutation, updateMutation, markClean, flashMsg, router]
+  );
+
+  const handleSave = useCallback(() => {
+    if (!isAuthenticated) { router.push("/login"); return; }
+    const kind: DesignKind = activeTab === "flow" ? "flow" : "canvas";
+    if (isActiveEmpty(kind)) {
+      flashMsg(`Nothing to save on the ${kind === "flow" ? "Flow" : "Canvas"} yet.`);
+      return;
+    }
+    if (currentSession && currentSession.kind === kind) {
+      void persistSession(currentSession.title);
+    } else {
+      setSaveAsMode(false);
+      setSaveModalOpen(true);
+    }
+  }, [isAuthenticated, activeTab, currentSession, persistSession, flashMsg, router]);
+
+  const handleSaveAs = useCallback(() => {
+    if (!isAuthenticated) { router.push("/login"); return; }
+    const kind: DesignKind = activeTab === "flow" ? "flow" : "canvas";
+    if (isActiveEmpty(kind)) {
+      flashMsg(`Nothing to save on the ${kind === "flow" ? "Flow" : "Canvas"} yet.`);
+      return;
+    }
+    setSaveAsMode(true);
+    setSaveModalOpen(true);
+  }, [isAuthenticated, activeTab, flashMsg, router]);
+
+  // Autosave every ~8s when dirty + logged in + existing session for this tab
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const id = window.setInterval(() => {
+      const session = currentSessionRef.current;
+      const tab = activeTabRef.current;
+      const kind: DesignKind = tab === "flow" ? "flow" : "canvas";
+      if (!session || session.kind !== kind) return;
+      if (!useCanvasStore.getState().isDirty && kind === "canvas") {
+        // Flow doesn't have isDirty — check emptiness / always snapshot when session exists
+      }
+      if (kind === "canvas" && !useCanvasStore.getState().isDirty) return;
+      if (isActiveEmpty(kind)) return;
+      const snapshot = snapshotActive(kind);
+      writeLocalDraft(kind, snapshot, session.id);
+      void updateMutation
+        .mutateAsync({
+          id: session.id,
+          body: {
+            title: session.title,
+            description: "",
+            tags: [],
+            kind,
+            elements: snapshot.elements,
+            app_state: snapshot.app_state,
+          },
+        })
+        .then(() => {
+          markClean();
+          flashMsg("Autosaved ✓");
+        })
+        .catch(() => {
+          // keep local draft
+        });
+    }, 8000);
+    return () => window.clearInterval(id);
+  }, [isAuthenticated, updateMutation, markClean, flashMsg]);
+
+  // Local draft write on dirty (crash recovery)
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const kind: DesignKind = activeTabRef.current === "flow" ? "flow" : "canvas";
+      if (isActiveEmpty(kind)) return;
+      if (kind === "canvas" && !useCanvasStore.getState().isDirty) return;
+      writeLocalDraft(kind, snapshotActive(kind), currentSessionRef.current?.id);
+    }, 4000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Draft recovery + ?designId= open on mount
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const designId = params.get("designId");
+    if (designId) {
+      void designsApi
+        .getMine(designId)
+        .then((d) => {
+          const kind = (d as SavedDesign).kind === "flow" ? "flow" : "canvas";
+          // Backend may return CommunityDesign shape — normalize
+          const saved: SavedDesign = {
+            id: (d as SavedDesign).id ?? designId,
+            user_id: (d as SavedDesign).user_id ?? "",
+            title: (d as SavedDesign).title ?? "Design",
+            description: (d as SavedDesign).description ?? "",
+            elements: (d as SavedDesign).elements ?? (d as { elements?: unknown }).elements,
+            app_state:
+              (d as SavedDesign).app_state ??
+              (d as { app_state?: Record<string, unknown>; appState?: Record<string, unknown> })
+                .app_state ??
+              (d as { appState?: Record<string, unknown> }).appState ??
+              {},
+            tags: (d as SavedDesign).tags ?? [],
+            published: (d as SavedDesign).published ?? false,
+            kind: kind as DesignKind,
+            created_at: (d as SavedDesign).created_at ?? "",
+            updated_at: (d as SavedDesign).updated_at ?? "",
+          };
+          handleTabSwitch(kind);
+          setTimeout(() => {
+            hydrateDesign(saved);
+            setCurrentSession({ id: saved.id, title: saved.title, kind: saved.kind });
+          }, 80);
+          window.history.replaceState({}, "", "/canvas");
+        })
+        .catch(() => flashMsg("Could not open design"));
+      return;
+    }
+    const draft = readLocalDraft();
+    if (draft && Date.now() - draft.savedAt < 1000 * 60 * 60 * 24) {
+      setDraftPrompt(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Open a saved session ──────────────────────────────────────────────
+  const performOpen = useCallback((design: SavedDesign) => {
+    const targetTab: CanvasTab = design.kind === "flow" ? "flow" : "canvas";
+    handleTabSwitch(targetTab);
+    setTimeout(() => {
+      hydrateDesign(design);
+      setCurrentSession({ id: design.id, title: design.title, kind: design.kind });
+      setHistoryOpen(false);
+    }, 60);
+  }, [handleTabSwitch]);
+
+  const requestOpenSession = useCallback((design: SavedDesign) => {
+    const targetKind: DesignKind = design.kind === "flow" ? "flow" : "canvas";
+    if (!isActiveEmpty(targetKind)) {
+      setPendingOpen(design);
+    } else {
+      performOpen(design);
+    }
+  }, [performOpen]);
+
   // ── Keyboard shortcuts ────────────────────────────────────────────────
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -255,13 +520,26 @@ export default function CanvasPage() {
         setChatOpen(false);
         setGuideOpen((v) => !v);
       }
+      if (e.altKey && e.key === "s") { e.preventDefault(); handleSave(); }
+      if (e.altKey && e.key === "h") {
+        e.preventDefault();
+        setChatOpen(false);
+        setGuideOpen(false);
+        setHistoryOpen((v) => !v);
+      }
+      if (e.key === "?" && !e.altKey && !e.metaKey && !e.ctrlKey) {
+        const t = e.target as HTMLElement | null;
+        if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+        e.preventDefault();
+        setShortcutsOpen(true);
+      }
       // Tab switch: Alt+1 = Canvas, Alt+2 = Flow
       if (e.altKey && e.key === "1") { e.preventDefault(); handleTabSwitch("canvas"); }
       if (e.altKey && e.key === "2") { e.preventDefault(); handleTabSwitch("flow"); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
-  }, []);
+  }, [handleSave, handleTabSwitch]);
 
   return (
     <div className="canvas-page" onDragOver={(e) => e.preventDefault()} onDrop={handleDrop}>
@@ -273,13 +551,18 @@ export default function CanvasPage() {
         onOpenShare={handleShare}
         onOpenInterview={() => router.push("/interview")}
         onPublish={handlePublish}
+        onSave={handleSave}
+        onSaveAs={handleSaveAs}
+        onOpenHistory={() => { setChatOpen(false); setGuideOpen(false); setHistoryOpen(true); }}
+        onOpenExport={() => setExportOpen(true)}
+        onOpenShortcuts={() => setShortcutsOpen(true)}
       />
 
       {/* ── Canvas / Flow tab bar ─────────────────────────────────────── */}
       <CanvasTabBar
         activeTab={activeTab}
         onSwitch={handleTabSwitch}
-        onClear={handleClearActive}
+        onClear={requestClearActive}
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
@@ -322,6 +605,16 @@ export default function CanvasPage() {
             canvas={activeTab === "flow" ? "flow" : "excalidraw"}
             onPreferFlow={() => handleTabSwitch("flow")}
           />
+          <HistoryPanel
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            onOpenSession={requestOpenSession}
+            onDuplicated={(d) => {
+              setCurrentSession({ id: d.id, title: d.title, kind: d.kind });
+              flashMsg("Duplicated — now editing copy");
+            }}
+            currentSessionId={currentSession?.id ?? null}
+          />
           {shareCopied && <Toast msg={shareUrl ? `Link copied: ${shareUrl.slice(0, 40)}…` : "Link copied!"} />}
           {publishMsg  && <Toast msg={publishMsg} />}
         </div>
@@ -330,7 +623,7 @@ export default function CanvasPage() {
         <PropertiesPanel activeTab={activeTab} />
       </div>
 
-      <SimulationBar />
+      <SimulationBar onOpenReport={() => setBottleneckOpen(true)} />
 
       {/* Floating chaos button */}
       <button
@@ -355,8 +648,131 @@ export default function CanvasPage() {
       </button>
 
       <MermaidEditor isOpen={mermaidOpen} onClose={() => setMermaidOpen(false)} activeTab={activeTab} />
-      <AiDiagramPanel isOpen={aiOpen} onClose={() => setAiOpen(false)} />
+      <AiDiagramPanel
+        isOpen={aiOpen}
+        onClose={() => setAiOpen(false)}
+        onPreferFlow={() => handleTabSwitch("flow")}
+      />
+      <ConfirmModal
+        isOpen={clearConfirmOpen}
+        title={`Clear ${activeTab === "flow" ? "Flow" : "Canvas"}?`}
+        message={`This removes all nodes and connections from the ${activeTab === "flow" ? "Flow diagram" : "Canvas"}. Chaos injections will also be cleared. This can’t be undone.`}
+        confirmLabel="Clear everything"
+        cancelLabel="Cancel"
+        danger
+        onConfirm={handleClearActive}
+        onCancel={() => setClearConfirmOpen(false)}
+      />
+      <SaveSessionModal
+        isOpen={saveModalOpen}
+        kind={activeTab === "flow" ? "flow" : "canvas"}
+        defaultTitle={
+          saveAsMode && currentSession
+            ? `${currentSession.title} (copy)`
+            : `Untitled ${activeTab === "flow" ? "Flow" : "Canvas"}`
+        }
+        saving={saveMutation.isPending || updateMutation.isPending}
+        onSave={async (title) => {
+          setSaveModalOpen(false);
+          await persistSession(title, saveAsMode);
+          setSaveAsMode(false);
+        }}
+        onCancel={() => {
+          setSaveModalOpen(false);
+          setSaveAsMode(false);
+        }}
+      />
+      <ConfirmModal
+        isOpen={draftPrompt}
+        title="Restore unsaved draft?"
+        message="We found a local draft from this browser. Restore it onto the canvas?"
+        confirmLabel="Restore draft"
+        cancelLabel="Discard"
+        onConfirm={() => {
+          const draft = readLocalDraft();
+          setDraftPrompt(false);
+          if (!draft) return;
+          handleTabSwitch(draft.kind);
+          setTimeout(() => {
+            hydrateSnapshot(draft.kind, draft.elements, draft.app_state);
+            if (draft.sessionId) {
+              setCurrentSession({
+                id: draft.sessionId,
+                title: "Restored session",
+                kind: draft.kind,
+              });
+            }
+          }, 60);
+        }}
+        onCancel={() => {
+          clearLocalDraft();
+          setDraftPrompt(false);
+        }}
+      />
+      <ConfirmModal
+        isOpen={pendingOpen !== null}
+        title="Replace current work?"
+        message={`Opening this session will replace what's on your ${pendingOpen?.kind === "flow" ? "Flow" : "Canvas"}. Unsaved changes will be lost.`}
+        confirmLabel="Open session"
+        cancelLabel="Cancel"
+        onConfirm={() => {
+          if (pendingOpen) performOpen(pendingOpen);
+          setPendingOpen(null);
+        }}
+        onCancel={() => setPendingOpen(null)}
+      />
+      <ExportMenu
+        isOpen={exportOpen}
+        onClose={() => setExportOpen(false)}
+        kind={activeTab === "flow" ? "flow" : "canvas"}
+      />
+      <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <BottleneckReport isOpen={bottleneckOpen} onClose={() => setBottleneckOpen(false)} />
       <UnsavedIndicator />
+      {roomId && (
+        <div
+          style={{
+            position: "fixed",
+            bottom: "calc(var(--pd-simbar-height) + 52px)",
+            left: 14,
+            zIndex: 160,
+            padding: "6px 10px",
+            borderRadius: "var(--pd-radius-full)",
+            background: "var(--pd-surface-raised)",
+            border: "1px solid var(--pd-border)",
+            fontSize: 11,
+            fontWeight: 700,
+            color: collabStatus === "connected" ? "var(--pd-brand)" : "var(--pd-text-muted)",
+            boxShadow: "var(--pd-shadow-sm)",
+          }}
+        >
+          Live · {roomId} · {collabStatus}
+        </div>
+      )}
+      {!roomId && isAuthenticated && (
+        <button
+          type="button"
+          onClick={startLiveRoom}
+          title="Start a live collaboration room"
+          style={{
+            position: "fixed",
+            bottom: "calc(var(--pd-simbar-height) + 52px)",
+            left: 14,
+            zIndex: 160,
+            padding: "6px 12px",
+            borderRadius: "var(--pd-radius-full)",
+            background: "var(--pd-surface-raised)",
+            border: "1px solid var(--pd-border)",
+            fontSize: 11,
+            fontWeight: 700,
+            color: "var(--pd-text-muted)",
+            cursor: "pointer",
+            boxShadow: "var(--pd-shadow-sm)",
+          }}
+        >
+          Go live
+        </button>
+      )}
     </div>
   );
 }
@@ -383,17 +799,16 @@ function CanvasTabBar({ activeTab, onSwitch, onClear }: {
       zIndex: 99,
     }}>
       <Tab
-        label="✏️ Canvas"
+        label="Canvas"
         title="Excalidraw freehand canvas (Alt+1)"
         active={activeTab === "canvas"}
         onClick={() => onSwitch("canvas")}
       />
       <Tab
-        label="⬡ Flow"
+        label="Flow"
         title="Node-edge diagram with live simulation (Alt+2)"
         active={activeTab === "flow"}
         onClick={() => onSwitch("flow")}
-        badge="NEW"
       />
 
       <button
@@ -404,7 +819,6 @@ function CanvasTabBar({ activeTab, onSwitch, onClear }: {
           marginLeft: 10,
           display: "flex",
           alignItems: "center",
-          gap: 5,
           padding: "3px 10px",
           borderRadius: "var(--pd-radius)",
           border: "1px solid var(--pd-border)",
@@ -425,8 +839,7 @@ function CanvasTabBar({ activeTab, onSwitch, onClear }: {
           e.currentTarget.style.background = "transparent";
         }}
       >
-        <span>🗑️</span>
-        <span>Clear {activeTab === "flow" ? "Flow" : "Canvas"}</span>
+        Clear {activeTab === "flow" ? "Flow" : "Canvas"}
       </button>
 
       {/* Keyboard hint */}

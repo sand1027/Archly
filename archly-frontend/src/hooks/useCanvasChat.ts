@@ -10,6 +10,7 @@ import {
   type DiagramSnapshot,
 } from "@/lib/ai/diagram-snapshot";
 import { applyChatActions, type ChatAction, type ActionResult } from "@/lib/ai/chat-actions";
+import type { AiProvider } from "@/lib/ai/providers";
 
 export interface ChatTurn {
   id: string;
@@ -48,7 +49,7 @@ export function useCanvasChat({ canvas, enabled = true }: UseCanvasChatOptions) 
   }, []);
 
   const send = useCallback(
-    (text: string) => {
+    (text: string, provider: AiProvider = "") => {
       const trimmed = text.trim();
       if (!trimmed || isStreaming) return;
 
@@ -87,6 +88,7 @@ export function useCanvasChat({ canvas, enabled = true }: UseCanvasChatOptions) 
           messages: history,
           diagram: snapshot,
           canvas,
+          provider,
         },
         {
           onToken: (chunk) => {
@@ -109,7 +111,7 @@ export function useCanvasChat({ canvas, enabled = true }: UseCanvasChatOptions) 
             setIsStreaming(false);
             const snap = snapshotRef.current;
             if (pendingActions.length > 0 && snap) {
-              const results = applyChatActions(pendingActions, snap);
+              const results = applyChatActions(pendingActions, snap, canvas);
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId

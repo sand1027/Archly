@@ -7,6 +7,7 @@ import {
   useEffect,
   useState,
 } from "react";
+import { useAuthStore } from "@/store/auth.store";
 
 export type UserTier = "free" | "plus" | "pro";
 
@@ -32,27 +33,31 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const TOKEN_KEY = "pd-access-token";
-const USER_KEY = "pd-user";
+export const TOKEN_KEY = "pd-access-token";
+export const USER_KEY = "pd-user";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Rehydrate from localStorage on mount
+  // Rehydrate from localStorage on mount — keep Zustand in sync for API client
   useEffect(() => {
     try {
       const token = localStorage.getItem(TOKEN_KEY);
       const rawUser = localStorage.getItem(USER_KEY);
       if (token && rawUser) {
+        const parsed = JSON.parse(rawUser) as AuthUser;
         setAccessToken(token);
-        setUser(JSON.parse(rawUser) as AuthUser);
+        setUser(parsed);
+        useAuthStore.getState().setAuth(token, parsed);
+      } else {
+        useAuthStore.getState().clearAuth();
       }
     } catch {
-      // Corrupt storage — clear it
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
+      useAuthStore.getState().clearAuth();
     } finally {
       setIsLoading(false);
     }
@@ -63,6 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(authUser);
     localStorage.setItem(TOKEN_KEY, token);
     localStorage.setItem(USER_KEY, JSON.stringify(authUser));
+    useAuthStore.getState().setAuth(token, authUser);
   }, []);
 
   const logout = useCallback(() => {
@@ -70,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(USER_KEY);
+    useAuthStore.getState().clearAuth();
   }, []);
 
   const updateUser = useCallback((updates: Partial<AuthUser>) => {
@@ -77,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!prev) return prev;
       const next = { ...prev, ...updates };
       localStorage.setItem(USER_KEY, JSON.stringify(next));
+      useAuthStore.getState().updateUser(updates);
       return next;
     });
   }, []);

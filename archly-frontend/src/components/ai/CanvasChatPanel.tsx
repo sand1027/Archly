@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, FormEvent, type CSSProperties } from "react";
 import { useCanvasChat } from "@/hooks/useCanvasChat";
 import type { CanvasKind } from "@/lib/ai/diagram-snapshot";
+import ModelSelect from "@/components/ai/ModelSelect";
+import { readStoredAiProvider, type AiProvider } from "@/lib/ai/providers";
 
 interface CanvasChatPanelProps {
   isOpen: boolean;
@@ -22,8 +24,10 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
   const { messages, isStreaming, error, send, cancel, clear, selectionHint } =
     useCanvasChat({ canvas, enabled: isOpen });
   const [input, setInput] = useState("");
+  const [provider, setProvider] = useState<AiProvider>("openrouter");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const providerRef = useRef<AiProvider>("openrouter");
 
   useEffect(() => {
     if (!isOpen) return;
@@ -32,17 +36,40 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
   }, [isOpen]);
 
   useEffect(() => {
+    providerRef.current = provider;
+  }, [provider]);
+
+  useEffect(() => {
+    queueMicrotask(() => setProvider(readStoredAiProvider()));
+  }, []);
+
+  useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [messages, isStreaming]);
+
+  const assistantNotes = messages
+    .filter((message) => message.role === "assistant" && message.content.trim())
+    .map((message) => message.content.trim());
+
+  const exportNotes = () => {
+    if (assistantNotes.length === 0) return;
+    const content = `# Archly architecture notes\n\n${assistantNotes.join("\n\n---\n\n")}\n`;
+    const url = URL.createObjectURL(new Blob([content], { type: "text/markdown" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `archly-notes-${new Date().toISOString().slice(0, 10)}.md`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  };
 
   if (!isOpen) return null;
 
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isStreaming) return;
-    send(input);
+    send(input, providerRef.current);
     setInput("");
   };
 
@@ -85,6 +112,19 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
             Explain nodes · inject chaos · {canvas === "flow" ? "Flow" : "Canvas"}
           </div>
         </div>
+        <button
+          type="button"
+          onClick={exportNotes}
+          disabled={assistantNotes.length === 0}
+          title="Download assistant messages as Markdown"
+          style={{
+            ...iconBtn,
+            opacity: assistantNotes.length === 0 ? 0.45 : 1,
+            cursor: assistantNotes.length === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          Export notes
+        </button>
         <button
           type="button"
           onClick={clear}
@@ -133,7 +173,7 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
                 <button
                   key={s}
                   type="button"
-                  onClick={() => send(s)}
+                  onClick={() => send(s, providerRef.current)}
                   style={{
                     fontSize: 11,
                     padding: "5px 9px",
@@ -228,32 +268,50 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
           flexShrink: 0,
         }}
       >
-        <textarea
-          ref={inputRef}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              onSubmit(e);
-            }
-          }}
-          placeholder="Ask about a node or inject chaos…"
-          rows={2}
-          disabled={isStreaming}
+        <div
           style={{
             flex: 1,
-            resize: "none",
-            fontSize: 12.5,
-            padding: "8px 10px",
             borderRadius: "var(--pd-radius)",
             border: "1px solid var(--pd-border)",
             background: "var(--pd-bg)",
-            color: "var(--pd-text)",
-            outline: "none",
-            fontFamily: "inherit",
+            minWidth: 0,
           }}
-        />
+        >
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                onSubmit(e);
+              }
+            }}
+            placeholder="Ask about a node or inject chaos…"
+            rows={2}
+            disabled={isStreaming}
+            style={{
+              display: "block",
+              width: "100%",
+              resize: "none",
+              fontSize: 12.5,
+              padding: "8px 10px 4px",
+              border: "none",
+              background: "transparent",
+              color: "var(--pd-text)",
+              outline: "none",
+              fontFamily: "inherit",
+              boxSizing: "border-box",
+            }}
+          />
+          <div style={{ padding: "3px 6px 6px" }}>
+            <ModelSelect
+              value={provider}
+              onChange={setProvider}
+              disabled={isStreaming}
+            />
+          </div>
+        </div>
         {isStreaming ? (
           <button type="button" onClick={cancel} style={sendBtn}>
             Stop

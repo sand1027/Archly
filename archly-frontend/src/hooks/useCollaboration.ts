@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { WsClient, type WsClientStatus } from "@/lib/api/ws-client";
 import { useCanvasStore } from "@/store/canvas.store";
 import { useAuth } from "@/providers/auth-provider";
+import { useFlowStore } from "@/store/flow.store";
 import type { WsMessage, ExcalidrawElement } from "@/types";
 
 interface UseCollaborationOptions {
@@ -38,6 +39,14 @@ export function useCollaboration({ roomId, enabled = true }: UseCollaborationOpt
         case "element_update":
           setElements(msg.payload as ExcalidrawElement[]);
           break;
+        case "flow_update": {
+          const payload = msg.payload as { nodes?: unknown[]; edges?: unknown[] };
+          useFlowStore.setState({
+            nodes: Array.isArray(payload.nodes) ? payload.nodes : [],
+            edges: Array.isArray(payload.edges) ? payload.edges : [],
+          });
+          break;
+        }
         case "cursor_move":
           setCollaborator(msg.payload);
           break;
@@ -50,6 +59,12 @@ export function useCollaboration({ roomId, enabled = true }: UseCollaborationOpt
         case "full_state":
           setElements(msg.payload.elements as ExcalidrawElement[]);
           setAppState(msg.payload.appState);
+          if (msg.payload.flow) {
+            useFlowStore.setState({
+              nodes: msg.payload.flow.nodes ?? [],
+              edges: msg.payload.flow.edges ?? [],
+            });
+          }
           break;
       }
     });
@@ -80,6 +95,10 @@ export function useCollaboration({ roomId, enabled = true }: UseCollaborationOpt
     []
   );
 
+  const sendFlowUpdate = useCallback((nodes: unknown[], edges: unknown[]) => {
+    client.current?.send("flow_update", { nodes, edges });
+  }, []);
+
   // Send cursor position
   const sendCursorMove = useCallback(
     (x: number, y: number) => {
@@ -95,7 +114,7 @@ export function useCollaboration({ roomId, enabled = true }: UseCollaborationOpt
     [user]
   );
 
-  return { status, sendElementUpdate, sendCursorMove };
+  return { status, sendElementUpdate, sendFlowUpdate, sendCursorMove };
 }
 
 // Deterministic color from a user ID string

@@ -83,6 +83,7 @@ export default function MermaidEditor({ isOpen, onClose, activeTab = "canvas" }:
       nodes: [...s.nodes, ...newNodes],
       edges: [...s.edges, ...newEdges],
     }));
+    useFlowStore.getState().requestFitView();
 
     setSuccessMsg(
       `✓ Added ${newNodes.length} node${newNodes.length !== 1 ? "s" : ""} and ${newEdges.length} edge${newEdges.length !== 1 ? "s" : ""} to Flow canvas`

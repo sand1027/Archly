@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -35,7 +36,7 @@ type ListDesignsResult struct {
 	PageSize int32           `json:"page_size"`
 }
 
-func (s *DesignService) List(ctx context.Context, tag string, page, pageSize int32) (*ListDesignsResult, error) {
+func (s *DesignService) List(ctx context.Context, tag, q string, page, pageSize int32) (*ListDesignsResult, error) {
 	if page < 1 {
 		page = 1
 	}
@@ -43,19 +44,43 @@ func (s *DesignService) List(ctx context.Context, tag string, page, pageSize int
 		pageSize = 24
 	}
 	offset := (page - 1) * pageSize
+	q = strings.TrimSpace(q)
 
 	var designs []sqlcgen.Design
 	var total int64
 	var err error
 
-	if tag != "" {
+	switch {
+	case tag != "" && q != "":
+		designs, err = s.q.ListPublishedDesignsByTagWithQuery(ctx, tag, q, pageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.q.CountPublishedDesignsByTagWithQuery(ctx, tag, q)
+		if err != nil {
+			return nil, err
+		}
+	case tag != "":
 		designs, err = s.q.ListPublishedDesignsByTag(ctx, tag, pageSize, offset)
 		if err != nil {
 			return nil, err
 		}
-		// For tag queries use a reasonable count estimate
-		total = int64(len(designs))
-	} else {
+		total, err = s.q.CountPublishedDesignsByTag(ctx, tag)
+		if err != nil {
+			// Fall back to page length if count query is unavailable
+			total = int64(len(designs))
+			err = nil
+		}
+	case q != "":
+		designs, err = s.q.ListPublishedDesignsWithQuery(ctx, q, pageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		total, err = s.q.CountPublishedDesignsWithQuery(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+	default:
 		designs, err = s.q.ListPublishedDesigns(ctx, pageSize, offset)
 		if err != nil {
 			return nil, err
@@ -86,8 +111,11 @@ func (s *DesignService) Get(ctx context.Context, id uuid.UUID) (sqlcgen.Design, 
 	return d, err
 }
 
-func (s *DesignService) Create(ctx context.Context, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, publish bool) (sqlcgen.Design, error) {
-	d, err := s.q.CreateDesign(ctx, userID, title, description, elements, appState, tags)
+func (s *DesignService) Create(ctx context.Context, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string, publish bool) (sqlcgen.Design, error) {
+	if kind != "flow" {
+		kind = "canvas"
+	}
+	d, err := s.q.CreateDesign(ctx, userID, title, description, elements, appState, tags, kind)
 	if err != nil {
 		return d, fmt.Errorf("create design: %w", err)
 	}
@@ -101,12 +129,44 @@ func (s *DesignService) Create(ctx context.Context, userID uuid.UUID, title, des
 	return d, nil
 }
 
-func (s *DesignService) Update(ctx context.Context, id, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string) (sqlcgen.Design, error) {
-	d, err := s.q.UpdateDesign(ctx, id, userID, title, description, elements, appState, tags)
+func (s *DesignService) Update(ctx context.Context, id, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string) (sqlcgen.Design, error) {
+	if kind != "flow" {
+		kind = "canvas"
+	}
+	d, err := s.q.UpdateDesign(ctx, id, userID, title, description, elements, appState, tags, kind)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return d, ErrForbidden
 	}
 	return d, err
+}
+
+func (s *DesignService) ListMine(ctx context.Context, userID uuid.UUID, page, pageSize int32) (*ListDesignsResult, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 50
+	}
+	offset := (page - 1) * pageSize
+
+	designs, err := s.q.ListMyDesigns(ctx, userID, pageSize, offset)
+	if err != nil {
+		return nil, err
+	}
+	total, err := s.q.CountMyDesigns(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if designs == nil {
+		designs = []sqlcgen.Design{}
+	}
+
+	return &ListDesignsResult{
+		Designs:  designs,
+		Total:    total,
+		Page:     page,
+		PageSize: pageSize,
+	}, nil
 }
 
 func (s *DesignService) Delete(ctx context.Context, id, userID uuid.UUID) error {
@@ -124,7 +184,7 @@ func (s *DesignService) Fork(ctx context.Context, originalID, userID uuid.UUID) 
 
 	forked, err := s.q.CreateDesign(ctx, userID,
 		"Fork of "+original.Title, original.Description,
-		original.Elements, original.AppState, original.Tags)
+		original.Elements, original.AppState, original.Tags, original.Kind)
 	if err != nil {
 		return forked, fmt.Errorf("create fork: %w", err)
 	}

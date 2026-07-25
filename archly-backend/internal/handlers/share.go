@@ -29,18 +29,34 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var body struct {
-		DesignID string          `json:"design_id"`
-		Elements json.RawMessage `json:"elements"`
-		AppState json.RawMessage `json:"app_state"`
-		TTLHours int             `json:"ttl_hours"`
+		DesignID     string          `json:"design_id"`
+		DesignId     string          `json:"designId"` // camelCase from frontend
+		Elements     json.RawMessage `json:"elements"`
+		AppState     json.RawMessage `json:"app_state"`
+		AppStateCamel json.RawMessage `json:"appState"`
+		TTLHours     int             `json:"ttl_hours"`
+		TTLCamel     int             `json:"ttlHours"`
 	}
 	if !Decode(w, r, &body) {
 		return
 	}
 
+	designIDStr := body.DesignID
+	if designIDStr == "" {
+		designIDStr = body.DesignId
+	}
+	ttlHours := body.TTLHours
+	if ttlHours == 0 {
+		ttlHours = body.TTLCamel
+	}
+	appState := body.AppState
+	if len(appState) == 0 {
+		appState = body.AppStateCamel
+	}
+
 	var designID *uuid.UUID
-	if body.DesignID != "" {
-		id, err := uuid.Parse(body.DesignID)
+	if designIDStr != "" {
+		id, err := uuid.Parse(designIDStr)
 		if err != nil {
 			BadRequest(w, "invalid design_id")
 			return
@@ -48,7 +64,7 @@ func (h *ShareHandler) Create(w http.ResponseWriter, r *http.Request) {
 		designID = &id
 	}
 
-	result, err := h.svc.Create(r.Context(), userID, designID, body.Elements, body.AppState, body.TTLHours)
+	result, err := h.svc.Create(r.Context(), userID, designID, body.Elements, appState, ttlHours)
 	if err != nil {
 		InternalError(w, err)
 		return

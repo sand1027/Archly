@@ -24,10 +24,29 @@ func NewDesignHandler(svc *services.DesignService) *DesignHandler {
 // GET /designs
 func (h *DesignHandler) List(w http.ResponseWriter, r *http.Request) {
 	tag := r.URL.Query().Get("tag")
+	q := r.URL.Query().Get("q")
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
 
-	result, err := h.svc.List(r.Context(), tag, int32(page), int32(pageSize))
+	result, err := h.svc.List(r.Context(), tag, q, int32(page), int32(pageSize))
+	if err != nil {
+		InternalError(w, err)
+		return
+	}
+	JSON(w, http.StatusOK, result)
+}
+
+// GET /designs/mine
+func (h *DesignHandler) Mine(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.UserIDFromCtx(r.Context())
+	if !ok {
+		Unauthorized(w)
+		return
+	}
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	pageSize, _ := strconv.Atoi(r.URL.Query().Get("pageSize"))
+
+	result, err := h.svc.ListMine(r.Context(), userID, int32(page), int32(pageSize))
 	if err != nil {
 		InternalError(w, err)
 		return
@@ -68,6 +87,7 @@ func (h *DesignHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Elements    json.RawMessage `json:"elements"`
 		AppState    json.RawMessage `json:"app_state"`
 		Tags        []string        `json:"tags"`
+		Kind        string          `json:"kind"`
 		Publish     bool            `json:"publish"`
 	}
 	if !Decode(w, r, &body) {
@@ -88,7 +108,7 @@ func (h *DesignHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d, err := h.svc.Create(r.Context(), userID, body.Title, body.Description,
-		body.Elements, body.AppState, body.Tags, body.Publish)
+		body.Elements, body.AppState, body.Tags, body.Kind, body.Publish)
 	if err != nil {
 		InternalError(w, err)
 		return
@@ -115,6 +135,7 @@ func (h *DesignHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Elements    json.RawMessage `json:"elements"`
 		AppState    json.RawMessage `json:"app_state"`
 		Tags        []string        `json:"tags"`
+		Kind        string          `json:"kind"`
 	}
 	if !Decode(w, r, &body) {
 		return
@@ -127,7 +148,7 @@ func (h *DesignHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	d, err := h.svc.Update(r.Context(), id, userID, body.Title, body.Description,
-		body.Elements, body.AppState, body.Tags)
+		body.Elements, body.AppState, body.Tags, body.Kind)
 	if errors.Is(err, services.ErrForbidden) {
 		Forbidden(w, "you do not own this design")
 		return

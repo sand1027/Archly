@@ -3,7 +3,11 @@
 import { useSimulationStore } from "@/store/simulation.store";
 import { startSimulationLoop, stopSimulationLoop } from "@/lib/simulation/engine";
 
-export default function SimulationBar() {
+export default function SimulationBar({
+  onOpenReport,
+}: {
+  onOpenReport?: () => void;
+} = {}) {
   const {
     isRunning, trafficMultiplier, speed, bottlenecks,
     start, stop, setTrafficMultiplier, setSpeed, clearAllChaos,
@@ -93,6 +97,25 @@ export default function SimulationBar() {
       </div>
 
       {/* ── Clear chaos ── */}
+      {onOpenReport && (
+        <button
+          type="button"
+          onClick={onOpenReport}
+          style={{
+            padding: "4px 10px",
+            borderRadius: "var(--pd-radius)",
+            border: "1px solid var(--pd-border)",
+            background: "var(--pd-bg-subtle)",
+            color: "var(--pd-text-muted)",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: "pointer",
+            flexShrink: 0,
+          }}
+        >
+          Report
+        </button>
+      )}
       {activeInjections.length > 0 && (
         <button onClick={clearAllChaos} style={{
           padding: "4px 10px", borderRadius: "var(--pd-radius)",

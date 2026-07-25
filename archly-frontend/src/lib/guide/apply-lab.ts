@@ -92,6 +92,7 @@ function applyLabToFlow(lab: LabDefinition): string[] {
   }));
 
   if (ids[0]) useFlowStore.getState().setSelectedNodeId(ids[0]);
+  useFlowStore.getState().requestFitView();
   return [...ids, noteId];
 }
 

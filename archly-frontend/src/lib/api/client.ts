@@ -141,7 +141,18 @@ export function apiStream(
       });
 
       if (!res.ok || !res.body) {
-        throw new ApiError(res.status, "STREAM_ERROR", res.statusText);
+        // Try to parse the JSON error body for a meaningful message
+        try {
+          const errBody = await res.json() as { code?: string; message?: string };
+          throw new ApiError(
+            res.status,
+            errBody.code ?? "STREAM_ERROR",
+            errBody.message ?? res.statusText
+          );
+        } catch (jsonErr) {
+          if (jsonErr instanceof ApiError) throw jsonErr;
+          throw new ApiError(res.status, "STREAM_ERROR", res.statusText);
+        }
       }
 
       const reader = res.body.getReader();

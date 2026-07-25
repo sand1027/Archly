@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import {
   AI_PROVIDER_OPTIONS,
+  providerIconLetter,
   storeAiProvider,
   type AiProvider,
 } from "@/lib/ai/providers";
@@ -91,11 +92,7 @@ export default function ModelSelect({
                     color: active ? "var(--pd-brand)" : "var(--pd-text-muted)",
                   }}
                 >
-                  {option.value === "ollama"
-                    ? "A"
-                    : option.value === "openrouter"
-                      ? "C"
-                      : "✦"}
+                  {providerIconLetter(option.value)}
                 </span>
                 <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
                   <span
@@ -160,7 +157,7 @@ const menuStyle: CSSProperties = {
   left: 0,
   bottom: "calc(100% + 7px)",
   zIndex: 30,
-  width: 220,
+  width: 240,
   padding: 6,
   border: "1px solid var(--pd-border)",
   borderRadius: 12,

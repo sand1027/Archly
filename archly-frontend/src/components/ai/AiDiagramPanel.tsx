@@ -146,10 +146,10 @@ export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiag
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [target, setTarget] = useState<"canvas" | "flow">("canvas");
-  const [provider, setProvider] = useState<AiProvider>("openrouter");
+  const [provider, setProvider] = useState<AiProvider>("groq");
   const { isAuthenticated } = useAuth();
   const targetRef = useRef<"canvas" | "flow">("canvas");
-  const providerRef = useRef<AiProvider>("openrouter");
+  const providerRef = useRef<AiProvider>("groq");
 
   useEffect(() => {
     targetRef.current = target;

@@ -16,39 +16,42 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
   const [response, setResponse] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
-  const stream = useCallback(
-    (prompt: string, provider?: string) => {
-      // Cancel any in-flight request
-      abortRef.current?.abort();
-      setResponse("");
-      setError(null);
-      setIsStreaming(true);
+  // Keep callbacks in a ref so the stream function never gets recreated
+  // when the parent re-renders with a new options object literal.
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
-      let accumulated = "";
+  const stream = useCallback((prompt: string, provider?: string) => {
+    // Cancel any in-flight request before starting a new one
+    abortRef.current?.abort();
+    setResponse("");
+    setError(null);
+    setIsStreaming(true);
 
-      const controller = apiStream(
-        aiApi.textToDiagramStreamPath,
-        { prompt, provider: provider ?? "" },
-        (chunk) => {
-          accumulated += chunk;
-          setResponse(accumulated);
-          options.onChunk?.(chunk);
-        },
-        () => {
-          setIsStreaming(false);
-          options.onDone?.(accumulated);
-        },
-        (err) => {
-          setIsStreaming(false);
-          setError(err);
-          options.onError?.(err);
-        }
-      );
+    let accumulated = "";
 
-      abortRef.current = controller;
-    },
-    [options]
-  );
+    const controller = apiStream(
+      aiApi.textToDiagramStreamPath,
+      { prompt, provider: provider ?? "" },
+      (chunk) => {
+        accumulated += chunk;
+        setResponse(accumulated);
+        optionsRef.current.onChunk?.(chunk);
+      },
+      () => {
+        setIsStreaming(false);
+        optionsRef.current.onDone?.(accumulated);
+      },
+      (err) => {
+        setIsStreaming(false);
+        setError(err);
+        optionsRef.current.onError?.(err);
+      }
+    );
+
+    abortRef.current = controller;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // stable — never recreated
 
   const cancel = useCallback(() => {
     abortRef.current?.abort();

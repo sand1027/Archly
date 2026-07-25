@@ -24,10 +24,10 @@ export default function CanvasChatPanel({ isOpen, onClose, canvas }: CanvasChatP
   const { messages, isStreaming, error, send, cancel, clear, selectionHint } =
     useCanvasChat({ canvas, enabled: isOpen });
   const [input, setInput] = useState("");
-  const [provider, setProvider] = useState<AiProvider>("openrouter");
+  const [provider, setProvider] = useState<AiProvider>("groq");
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const providerRef = useRef<AiProvider>("openrouter");
+  const providerRef = useRef<AiProvider>("groq");
 
   useEffect(() => {
     if (!isOpen) return;

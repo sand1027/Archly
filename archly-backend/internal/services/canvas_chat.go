@@ -63,7 +63,7 @@ type CanvasChatRequest struct {
 	Messages []ChatMessage  `json:"messages"`
 	Diagram  DiagramContext `json:"diagram"`
 	Canvas   string         `json:"canvas"`   // "excalidraw" | "flow"
-	Provider string         `json:"provider"` // "ollama" | "gemini" | "openrouter" | "" (auto)
+	Provider string         `json:"provider"` // "ollama" | "groq" | "github" | "openrouter" | "" (auto)
 }
 
 const canvasChatSystemPrompt = `You are Archly's architecture assistant. You help users understand their system design diagram and run chaos experiments.
@@ -127,16 +127,27 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 			return s.writeCanvasChatSSE(w, full)
 		}
 		log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
-	case "gemini":
-		if s.cfg.GeminiAPIKey != "" {
-			log.Info().Str("user_id", userID).Str("provider", "gemini").Msg("ai: canvas chat pinned to Gemini")
-			full, err := s.geminiChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+	case "groq":
+		if s.cfg.GroqAPIKey != "" {
+			log.Info().Str("user_id", userID).Str("provider", "groq").Msg("ai: canvas chat pinned to Groq")
+			full, err := s.groqChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
 			if err != nil {
 				return err
 			}
 			return s.writeCanvasChatSSE(w, full)
 		}
-		log.Warn().Str("user_id", userID).Msg("ai: gemini requested but key not set — falling through")
+		log.Warn().Str("user_id", userID).Msg("ai: groq requested but key not set — falling through")
+	case "github":
+		if s.cfg.GitHubModelsToken != "" {
+			log.Info().Str("user_id", userID).Str("provider", "github").Msg("ai: canvas chat pinned to GitHub Models")
+			full, err := s.openaiCompatChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload,
+				githubModelsURL, s.cfg.GitHubModelsModel, s.cfg.GitHubModelsToken, "github")
+			if err != nil {
+				return err
+			}
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Str("user_id", userID).Msg("ai: github requested but token not set — falling through")
 	case "openrouter":
 		if s.cfg.OpenRouterAPIKey != "" {
 			log.Info().Str("user_id", userID).Str("provider", "openrouter").Msg("ai: canvas chat pinned to OpenRouter")
@@ -149,7 +160,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 		log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
 	}
 
-	// ── Auto fallback: Ollama → Gemini → OpenRouter ───────────────────────
+	// ── Auto fallback: Ollama → Groq → OpenRouter ───────────────────────
 	var full string
 	var err error
 
@@ -169,24 +180,35 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 		log.Warn().Err(err).Str("user_id", userID).Msg("ai: Ollama canvas chat failed — falling back")
 	}
 
-	if s.cfg.GeminiAPIKey != "" {
+	if s.cfg.GroqAPIKey != "" {
 		log.Info().
 			Str("user_id", userID).
-			Str("provider", "gemini").
-			Str("model", s.cfg.GeminiModel).
+			Str("provider", "groq").
+			Str("model", s.cfg.GroqModel).
 			Str("canvas", req.Canvas).
 			Int("nodes", len(req.Diagram.Nodes)).
-			Msg("ai: CanvasChatStream — trying Gemini")
+			Msg("ai: CanvasChatStream — trying Groq")
 
-		full, err = s.geminiChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+		full, err = s.groqChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
 		if err == nil {
 			return s.writeCanvasChatSSE(w, full)
 		}
 		if errors.Is(err, ErrAIQuotaExceeded) {
-			log.Warn().Str("user_id", userID).Msg("ai: Gemini quota exceeded — falling back to OpenRouter for canvas chat")
+			log.Warn().Str("user_id", userID).Msg("ai: Groq quota exceeded — falling back to GitHub Models for canvas chat")
 		} else {
-			log.Warn().Err(err).Str("user_id", userID).Msg("ai: Gemini canvas chat failed — falling back to OpenRouter")
+			log.Warn().Err(err).Str("user_id", userID).Msg("ai: Groq canvas chat failed — falling back to GitHub Models")
 		}
+	}
+
+	if s.cfg.GitHubModelsToken != "" {
+		log.Info().Str("user_id", userID).Str("provider", "github").
+			Str("model", s.cfg.GitHubModelsModel).Msg("ai: CanvasChatStream — trying GitHub Models")
+		full, err = s.openaiCompatChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload,
+			githubModelsURL, s.cfg.GitHubModelsModel, s.cfg.GitHubModelsToken, "github")
+		if err == nil {
+			return s.writeCanvasChatSSE(w, full)
+		}
+		log.Warn().Err(err).Str("user_id", userID).Msg("ai: GitHub Models canvas chat failed — falling back to OpenRouter")
 	}
 
 	if s.cfg.OpenRouterAPIKey != "" {
@@ -325,78 +347,9 @@ func (s *AIService) writeCanvasChatSSE(w http.ResponseWriter, full string) error
 	return nil
 }
 
-// geminiChatCollect streams from Gemini into a string (no client headers yet).
-func (s *AIService) geminiChatCollect(ctx context.Context, userID, system, user string) (string, error) {
-	reqBody, _ := json.Marshal(geminiRequest{
-		SystemInstruction: &geminiContent{
-			Parts: []geminiPart{{Text: system}},
-		},
-		Contents: []geminiContent{
-			{Role: "user", Parts: []geminiPart{{Text: user}}},
-		},
-		GenerationConfig: map[string]interface{}{
-			"maxOutputTokens": 1500,
-			"temperature":     0.3,
-		},
-	})
-
-	url := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse&key=%s",
-		geminiBaseURL, s.cfg.GeminiModel, s.cfg.GeminiAPIKey)
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
-	if err != nil {
-		return "", fmt.Errorf("build gemini request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("gemini http: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		if resp.StatusCode == http.StatusTooManyRequests {
-			return "", ErrAIQuotaExceeded
-		}
-		return "", fmt.Errorf("gemini %d: %s", resp.StatusCode, truncate(string(body), 400))
-	}
-
-	var full strings.Builder
-	scanner := bufio.NewScanner(resp.Body)
-	// Gemini chunks can be large
-	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if !strings.HasPrefix(line, "data: ") {
-			continue
-		}
-		data := strings.TrimPrefix(line, "data: ")
-		if data == "[DONE]" {
-			break
-		}
-		var chunk geminiStreamChunk
-		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			continue
-		}
-		for _, candidate := range chunk.Candidates {
-			for _, part := range candidate.Content.Parts {
-				if part.ThoughtSignature != "" || part.Text == "" {
-					continue
-				}
-				full.WriteString(part.Text)
-			}
-		}
-	}
-	if err := scanner.Err(); err != nil {
-		return full.String(), err
-	}
-	if full.Len() == 0 {
-		log.Warn().Str("user_id", userID).Msg("ai: Gemini canvas chat returned empty")
-		return "", errors.New("empty Gemini response")
-	}
-	return full.String(), nil
+// groqChatCollect collects from Groq into a string using the OpenAI-compatible API.
+func (s *AIService) groqChatCollect(ctx context.Context, userID, system, user string) (string, error) {
+	return s.openaiCompatChatCollect(ctx, userID, system, user, groqURL, s.cfg.GroqModel, s.cfg.GroqAPIKey, "groq")
 }
 
 func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, user string) (string, error) {

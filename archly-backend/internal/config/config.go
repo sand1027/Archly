@@ -31,15 +31,19 @@ type Config struct {
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
 
-	// AI — Gemini (primary)
-	GeminiAPIKey string
-	GeminiModel  string
+	// AI — Groq (primary cloud)
+	GroqAPIKey string
+	GroqModel  string
+
+	// AI — GitHub Models (fallback)
+	GitHubModelsToken string
+	GitHubModelsModel string
 
 	// AI — OpenRouter (fallback)
 	OpenRouterAPIKey string
 	OpenRouterModel  string
 
-	// AI — Ollama (local fallback)
+	// AI — Ollama (local, highest priority when set)
 	OllamaBaseURL string
 	OllamaModel   string
 
@@ -61,8 +65,10 @@ func Load() (*Config, error) {
 		Environment: getEnv("ENVIRONMENT", "development"),
 		DatabaseURL: getEnv("DATABASE_URL", ""),
 		RedisURL:    getEnv("REDIS_URL", "redis://localhost:6379"),
-		GeminiModel:          getEnv("GEMINI_MODEL", "gemini-2.0-flash"),
-		GeminiAPIKey:         getEnv("GEMINI_API_KEY", ""),
+		GroqAPIKey:           getEnv("GROQ_API_KEY", ""),
+		GroqModel:            getEnv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+		GitHubModelsToken:    getEnv("GITHUB_MODELS_TOKEN", ""),
+		GitHubModelsModel:    getEnv("GITHUB_MODELS_MODEL", "gpt-4o-mini"),
 		OpenRouterAPIKey:     getEnv("OPENROUTER_API_KEY", ""),
 		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
 		OllamaBaseURL:        getEnv("OLLAMA_BASE_URL", ""),

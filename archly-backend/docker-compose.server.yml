@@ -107,8 +107,7 @@ services:
     environment:
       PORT: 8081
       KAFKA_BROKERS: archly-kafka:9092
-      CORS_ORIGINS: "https://archly.sbs,https://www.archly.sbs"
-    expose:
+      CORS_ORIGINS: "https://archly.sbs,https://www.archly.sbs"    expose:
       - "8081"
     ports:
       - "127.0.0.1:8081:8081"   # bind to localhost only — not exposed to internet

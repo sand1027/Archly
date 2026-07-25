@@ -25,7 +25,7 @@ func NewAIHandler(svc *services.AIService) *AIHandler {
 func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Prompt   string `json:"prompt"`
-		Provider string `json:"provider"` // "ollama" | "gemini" | "openrouter" | "" (auto)
+		Provider string `json:"provider"` // "ollama" | "groq" | "github" | "openrouter" | "" (auto)
 	}
 	if !Decode(w, r, &body) {
 		return
@@ -51,15 +51,15 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 
 	if err := h.svc.TextToDiagramStream(r.Context(), body.Prompt, uid, body.Provider, w); err != nil {
 		if errors.Is(err, services.ErrAIUnavailable) {
-			log.Warn().Str("user_id", uid).Msg("handler: AI unavailable — GEMINI_API_KEY not configured")
+			log.Warn().Str("user_id", uid).Msg("handler: AI unavailable — no provider configured")
 			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",
-				"AI features require OPENAI_API_KEY to be configured")
+				"No AI provider available. Configure Groq, GitHub Models, OpenRouter, or Ollama.")
 			return
 		}
 		if errors.Is(err, services.ErrAIQuotaExceeded) {
-			log.Warn().Str("user_id", uid).Msg("handler: Gemini quota exceeded")
+			log.Warn().Str("user_id", uid).Msg("handler: AI quota exceeded")
 			Error(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED",
-				"AI quota exceeded — free tier limit reached. Please try again later or upgrade your Gemini API plan.")
+				"AI quota exceeded — daily limit reached. Please try again tomorrow or switch providers.")
 			return
 		}
 		// At this point we may have already written SSE headers — just log
@@ -102,12 +102,12 @@ func (h *AIHandler) CanvasChat(w http.ResponseWriter, r *http.Request) {
 	if err := h.svc.CanvasChatStream(r.Context(), body, uid, w); err != nil {
 		if errors.Is(err, services.ErrAIUnavailable) {
 			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",
-				"AI features require an API key to be configured")
+				"No AI provider available. Configure Groq, GitHub Models, OpenRouter, or Ollama.")
 			return
 		}
 		if errors.Is(err, services.ErrAIQuotaExceeded) {
 			Error(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED",
-				"AI quota exceeded — free tier limit reached. Please try again later.")
+				"AI quota exceeded — free tier limit reached. Switch providers or try again later.")
 			return
 		}
 		log.Error().Err(err).Str("user_id", uid).Msg("handler: CanvasChat error")
@@ -150,7 +150,7 @@ func (h *AIHandler) DiagramToCode(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, services.ErrAIUnavailable) {
 			log.Warn().Msg("handler: AI unavailable for DiagramToCode")
 			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",
-				"AI features require OPENAI_API_KEY to be configured")
+				"No AI provider available. Configure Groq, GitHub Models, OpenRouter, or Ollama.")
 			return
 		}
 		log.Error().Err(err).Str("format", body.Format).Msg("handler: DiagramToCode error")

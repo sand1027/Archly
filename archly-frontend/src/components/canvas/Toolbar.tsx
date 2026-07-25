@@ -9,6 +9,8 @@ import { useSimulationStore } from "@/store/simulation.store";
 interface ToolbarProps {
   onOpenMermaid: () => void;
   onOpenAi: () => void;
+  onOpenChat: () => void;
+  onOpenGuide: () => void;
   onOpenShare: () => void;
   onOpenInterview: () => void;
   onPublish: () => void;
@@ -17,6 +19,8 @@ interface ToolbarProps {
 export default function Toolbar({
   onOpenMermaid,
   onOpenAi,
+  onOpenChat,
+  onOpenGuide,
   onOpenShare,
   onOpenInterview,
   onPublish,
@@ -47,7 +51,7 @@ export default function Toolbar({
 
       {/* ── Logo ── */}
       <Link href="/canvas" style={{
-        display: "flex", alignItems: "center", gap: 7,
+        display: "flex", alignItems: "center",
         textDecoration: "none", marginRight: 6,
         padding: "4px 8px", borderRadius: "var(--pd-radius)",
         transition: "background var(--pd-duration)",
@@ -55,15 +59,13 @@ export default function Toolbar({
         onMouseEnter={e => (e.currentTarget.style.background = "var(--pd-bg-muted)")}
         onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
       >
-        <div style={{
-          width: 26, height: 26, borderRadius: "var(--pd-radius-sm)",
-          background: "linear-gradient(135deg, #5b5ef4, #8b5cf6)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 14, flexShrink: 0,
-          boxShadow: "0 2px 6px rgba(91,94,244,0.4)",
-        }}>✏️</div>
-        <span style={{ fontWeight: 800, fontSize: 14, color: "var(--pd-text)", letterSpacing: "-0.01em" }}>
-          Archly
+        <span style={{
+          fontWeight: 800,
+          fontSize: 15,
+          color: "var(--pd-text)",
+          letterSpacing: "-0.02em",
+        }}>
+          archly
         </span>
       </Link>
 
@@ -72,6 +74,8 @@ export default function Toolbar({
       {/* ── Tools ── */}
       <Btn icon="📝" label="Mermaid" onClick={onOpenMermaid} title="Mermaid → canvas (Alt+M)" />
       <Btn icon="✨" label="AI" onClick={onOpenAi} title="AI text-to-diagram (Alt+A)" />
+      <Btn icon="💬" label="Chat" onClick={onOpenChat} title="Architecture chat — explain & chaos (Alt+C)" />
+      <Btn icon="📚" label="Guide" onClick={onOpenGuide} title="Student guide — nodes, config, labs (Alt+G)" />
 
       <Divider />
 

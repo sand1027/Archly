@@ -162,6 +162,7 @@ func main() {
 		r.Use(middleware.JWTOptional(cfg))
 		aih := handlers.NewAIHandler(aiSvc)
 		r.Post("/text-to-diagram/chat-streaming", aih.TextToDiagramStream)
+		r.Post("/canvas-chat", aih.CanvasChat)
 		r.Post("/diagram-to-code/generate", aih.DiagramToCode)
 	})
 

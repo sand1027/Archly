@@ -33,6 +33,7 @@ import { useSimulationStore } from "@/store/simulation.store";
 import { useTheme } from "@/providers/theme-provider";
 import { getComponent } from "@/lib/components-registry";
 import FlowNode from "./FlowNode";
+import GuideNoteNode from "./GuideNoteNode";
 import FlowEdge from "./FlowEdge";
 import FlowContextMenu from "./FlowContextMenu";
 import FlowSimBar from "./FlowSimBar";
@@ -40,7 +41,7 @@ import FlowBottleneckPanel from "./FlowBottleneckPanel";
 
 // Register custom node and edge types — must be stable (defined outside component)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const NODE_TYPES = { flowNode: FlowNode as any } as const;
+const NODE_TYPES = { flowNode: FlowNode as any, guideNote: GuideNoteNode as any } as const;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const EDGE_TYPES = { flowEdge: FlowEdge as any } as const;
 

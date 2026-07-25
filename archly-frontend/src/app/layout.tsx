@@ -20,11 +20,17 @@ export const metadata: Metadata = {
     "excalidraw",
     "interview",
   ],
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png" }],
+    apple: [{ url: "/favicon.png", type: "image/png" }],
+    shortcut: "/favicon.png",
+  },
   openGraph: {
     title: "Archly — System Design Simulator",
     description:
       "Design, simulate, and chaos-test distributed system architectures in the browser.",
     type: "website",
+    images: [{ url: "/favicon.png" }],
   },
 };
 

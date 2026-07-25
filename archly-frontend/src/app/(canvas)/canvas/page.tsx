@@ -29,6 +29,8 @@ import PacketAnimator from "@/components/simulation/PacketAnimator";
 import ChaosPanel from "@/components/simulation/ChaosPanel";
 import MermaidEditor from "@/components/mermaid/MermaidEditor";
 import AiDiagramPanel from "@/components/ai/AiDiagramPanel";
+import CanvasChatPanel from "@/components/ai/CanvasChatPanel";
+import GuidePanel from "@/components/guide/GuidePanel";
 
 import { useCanvasStore } from "@/store/canvas.store";
 import { useSimulationStore } from "@/store/simulation.store";
@@ -73,9 +75,42 @@ export default function CanvasPage() {
     setActiveTab(tab);
   }, []);
 
+  /** Wipe the active canvas/flow in one shot (with confirm). */
+  const handleClearActive = useCallback(() => {
+    const label = activeTab === "flow" ? "Flow diagram" : "Canvas";
+    const ok = window.confirm(
+      `Clear the entire ${label}? This removes all nodes and connections. Chaos injections will also be cleared.`
+    );
+    if (!ok) return;
+
+    if (activeTab === "flow") {
+      useFlowStore.getState().reset();
+    } else {
+      const api = getExcalidrawAPI();
+      api?.updateScene?.({ elements: [] });
+      api?.history?.clear?.();
+      useCanvasStore.getState().setElements([]);
+      useCanvasStore.getState().setSelectedElementIds([]);
+      // Drop per-node configs without wiping collab room state
+      const configs = useCanvasStore.getState().nodeConfigs;
+      for (const id of Object.keys(configs)) {
+        useCanvasStore.getState().removeNodeConfig(id);
+      }
+      useCanvasStore.getState().markDirty();
+    }
+
+    useSimulationStore.getState().clearAllChaos();
+    useSimulationStore.getState().stop();
+    useSimulationStore.getState().setMetrics({});
+    useSimulationStore.getState().updatePackets([]);
+    useSimulationStore.getState().setBottlenecks([]);
+  }, [activeTab]);
+
   // ── Panel / modal states ──────────────────────────────────────────────
   const [mermaidOpen, setMermaidOpen] = useState(false);
   const [aiOpen, setAiOpen]           = useState(false);
+  const [chatOpen, setChatOpen]       = useState(false);
+  const [guideOpen, setGuideOpen]     = useState(false);
   const [chaosOpen, setChaosOpen]     = useState(false);
   const [shareUrl, setShareUrl]       = useState<string | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
@@ -210,6 +245,16 @@ export default function CanvasPage() {
     const h = (e: KeyboardEvent) => {
       if (e.altKey && e.key === "m") { e.preventDefault(); setMermaidOpen(true); }
       if (e.altKey && e.key === "a") { e.preventDefault(); setAiOpen(true); }
+      if (e.altKey && e.key === "c") {
+        e.preventDefault();
+        setGuideOpen(false);
+        setChatOpen((v) => !v);
+      }
+      if (e.altKey && e.key === "g") {
+        e.preventDefault();
+        setChatOpen(false);
+        setGuideOpen((v) => !v);
+      }
       // Tab switch: Alt+1 = Canvas, Alt+2 = Flow
       if (e.altKey && e.key === "1") { e.preventDefault(); handleTabSwitch("canvas"); }
       if (e.altKey && e.key === "2") { e.preventDefault(); handleTabSwitch("flow"); }
@@ -223,13 +268,19 @@ export default function CanvasPage() {
       <Toolbar
         onOpenMermaid={() => setMermaidOpen(true)}
         onOpenAi={() => setAiOpen(true)}
+        onOpenChat={() => { setGuideOpen(false); setChatOpen(true); }}
+        onOpenGuide={() => { setChatOpen(false); setGuideOpen(true); }}
         onOpenShare={handleShare}
         onOpenInterview={() => router.push("/interview")}
         onPublish={handlePublish}
       />
 
       {/* ── Canvas / Flow tab bar ─────────────────────────────────────── */}
-      <CanvasTabBar activeTab={activeTab} onSwitch={handleTabSwitch} />
+      <CanvasTabBar
+        activeTab={activeTab}
+        onSwitch={handleTabSwitch}
+        onClear={handleClearActive}
+      />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
         {/* Left: component palette — shared by both tabs */}
@@ -260,6 +311,17 @@ export default function CanvasPage() {
 
           {/* Shared overlays (both tabs) */}
           <ChaosPanel isOpen={chaosOpen} onClose={() => setChaosOpen(false)} />
+          <CanvasChatPanel
+            isOpen={chatOpen}
+            onClose={() => setChatOpen(false)}
+            canvas={activeTab === "flow" ? "flow" : "excalidraw"}
+          />
+          <GuidePanel
+            isOpen={guideOpen}
+            onClose={() => setGuideOpen(false)}
+            canvas={activeTab === "flow" ? "flow" : "excalidraw"}
+            onPreferFlow={() => handleTabSwitch("flow")}
+          />
           {shareCopied && <Toast msg={shareUrl ? `Link copied: ${shareUrl.slice(0, 40)}…` : "Link copied!"} />}
           {publishMsg  && <Toast msg={publishMsg} />}
         </div>
@@ -301,9 +363,10 @@ export default function CanvasPage() {
 
 // ─── Canvas/Flow tab bar ──────────────────────────────────────────────────
 
-function CanvasTabBar({ activeTab, onSwitch }: {
+function CanvasTabBar({ activeTab, onSwitch, onClear }: {
   activeTab: CanvasTab;
   onSwitch: (t: CanvasTab) => void;
+  onClear: () => void;
 }) {
   return (
     <div style={{
@@ -332,6 +395,39 @@ function CanvasTabBar({ activeTab, onSwitch }: {
         onClick={() => onSwitch("flow")}
         badge="NEW"
       />
+
+      <button
+        type="button"
+        onClick={onClear}
+        title={activeTab === "flow" ? "Clear all Flow nodes and edges" : "Clear entire Canvas"}
+        style={{
+          marginLeft: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: 5,
+          padding: "3px 10px",
+          borderRadius: "var(--pd-radius)",
+          border: "1px solid var(--pd-border)",
+          background: "transparent",
+          color: "var(--pd-text-muted)",
+          fontSize: 11,
+          fontWeight: 600,
+          cursor: "pointer",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.color = "#dc2626";
+          e.currentTarget.style.borderColor = "color-mix(in srgb, #dc2626 40%, transparent)";
+          e.currentTarget.style.background = "color-mix(in srgb, #dc2626 8%, transparent)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = "var(--pd-text-muted)";
+          e.currentTarget.style.borderColor = "var(--pd-border)";
+          e.currentTarget.style.background = "transparent";
+        }}
+      >
+        <span>🗑️</span>
+        <span>Clear {activeTab === "flow" ? "Flow" : "Canvas"}</span>
+      </button>
 
       {/* Keyboard hint */}
       <span style={{

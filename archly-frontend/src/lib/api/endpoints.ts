@@ -123,6 +123,7 @@ export interface DiagramToCodeResponse {
 export const aiApi = {
   // SSE streaming — use apiStream() from client.ts, not this
   textToDiagramStreamPath: "/v1/ai/text-to-diagram/chat-streaming",
+  canvasChatPath: "/v1/ai/canvas-chat",
 
   diagramToCode: (body: DiagramToCodeRequest) =>
     api.post<DiagramToCodeResponse>("/v1/ai/diagram-to-code/generate", body),

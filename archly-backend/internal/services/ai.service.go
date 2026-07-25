@@ -111,8 +111,8 @@ type orStreamChunk struct {
 
 // ── TextToDiagramStream ───────────────────────────────────────────────────
 
-// TextToDiagramStream tries Gemini first; falls back to OpenRouter on quota
-// error or if Gemini is not configured. Streams SSE directly to w.
+// TextToDiagramStream tries Ollama first (if configured); falls back to
+// Gemini, then OpenRouter. Streams SSE directly to w.
 func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID string, w http.ResponseWriter) error {
 	systemPrompt := `You output only Mermaid flowchart syntax. Nothing else. No prose, no explanation, no comments, no markdown fences. Start immediately with "flowchart TD". Do NOT use subgraph blocks.`
 	userMessage := fmt.Sprintf(
@@ -120,13 +120,32 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID stri
 		prompt,
 	)
 
-	// ── Try Gemini first ──────────────────────────────────────────────────
+	// ── Try Ollama first (local, free, no quota) ──────────────────────────
+	if s.cfg.OllamaBaseURL != "" {
+		log.Info().
+			Str("user_id", userID).
+			Str("provider", "ollama").
+			Str("model", s.cfg.OllamaModel).
+			Str("prompt_preview", truncate(prompt, 120)).
+			Msg("ai: TextToDiagramStream — trying Ollama")
+
+		tokens, err := s.ollamaStream(ctx, userID, systemPrompt, userMessage, w)
+		if err == nil {
+			s.publishEvent(userID, prompt, s.cfg.OllamaModel, "ollama", tokens)
+			return nil
+		}
+
+		log.Warn().Err(err).Str("user_id", userID).Msg("ai: Ollama failed — falling back to Gemini")
+	} else {
+		log.Info().Str("user_id", userID).Msg("ai: OLLAMA_BASE_URL not set — trying Gemini directly")
+	}
+
+	// ── Fallback: Gemini ──────────────────────────────────────────────────
 	if s.cfg.GeminiAPIKey != "" {
 		log.Info().
 			Str("user_id", userID).
 			Str("provider", "gemini").
 			Str("model", s.cfg.GeminiModel).
-			Str("prompt_preview", truncate(prompt, 120)).
 			Msg("ai: TextToDiagramStream — trying Gemini")
 
 		tokens, err := s.geminiStream(ctx, userID, systemPrompt, userMessage, w)
@@ -140,8 +159,6 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID stri
 		} else {
 			log.Warn().Err(err).Str("user_id", userID).Msg("ai: Gemini failed — falling back to OpenRouter")
 		}
-	} else {
-		log.Info().Str("user_id", userID).Msg("ai: GEMINI_API_KEY not set — trying OpenRouter directly")
 	}
 
 	// ── Fallback: OpenRouter ──────────────────────────────────────────────
@@ -162,7 +179,7 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID stri
 		return err
 	}
 
-	log.Warn().Str("user_id", userID).Msg("ai: no AI provider available — both Gemini and OpenRouter unconfigured")
+	log.Warn().Str("user_id", userID).Msg("ai: no AI provider available — Ollama, Gemini and OpenRouter all unconfigured")
 	return ErrAIUnavailable
 }
 
@@ -409,7 +426,101 @@ func (s *AIService) openRouterStream(ctx context.Context, userID, system, user s
 	return tokens, nil
 }
 
-// ── DiagramToCode ──────────────────────────────────────────────────────────
+// ── ollamaStream ──────────────────────────────────────────────────────────
+
+// ollamaStream calls a local Ollama instance (OpenAI-compatible) and streams
+// SSE to w. No API key needed — uses OLLAMA_BASE_URL env var.
+func (s *AIService) ollamaStream(ctx context.Context, userID, system, user string, w http.ResponseWriter) (int, error) {
+	url := strings.TrimRight(s.cfg.OllamaBaseURL, "/") + "/v1/chat/completions"
+
+	reqBody, _ := json.Marshal(orRequest{
+		Model: s.cfg.OllamaModel,
+		Messages: []orMessage{
+			{Role: "system", Content: system},
+			{Role: "user", Content: user},
+		},
+		Stream:      true,
+		MaxTokens:   2000,
+		Temperature: 0.1,
+	})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
+	if err != nil {
+		return 0, fmt.Errorf("build ollama request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("ollama http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		log.Error().Str("user_id", userID).Int("status", resp.StatusCode).
+			Str("body", truncate(string(body), 400)).Msg("ai: Ollama non-200")
+		return 0, fmt.Errorf("ollama %d: %s", resp.StatusCode, truncate(string(body), 400))
+	}
+
+	// Headers committed here
+	writeSSEHeaders(w)
+	flusher, canFlush := w.(http.Flusher)
+
+	var tokens int
+	var fullOutput strings.Builder
+
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			if canFlush {
+				flusher.Flush()
+			}
+			break
+		}
+
+		var chunk orStreamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue
+		}
+
+		for _, choice := range chunk.Choices {
+			text := choice.Delta.Content
+			if text == "" {
+				continue
+			}
+			tokens++
+			fullOutput.WriteString(text)
+			writeSSELines(w, text)
+			if canFlush {
+				flusher.Flush()
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Error().Err(err).Str("user_id", userID).Msg("ai: Ollama scanner error")
+		return tokens, err
+	}
+
+	rawOut := fullOutput.String()
+	log.Info().
+		Str("user_id", userID).
+		Str("model", s.cfg.OllamaModel).
+		Int("tokens", tokens).
+		Str("output_preview", truncate(rawOut, 300)).
+		Bool("starts_with_flowchart", strings.HasPrefix(strings.TrimSpace(rawOut), "flowchart")).
+		Bool("has_markdown_fence", strings.Contains(rawOut, "```")).
+		Msg("ai: ollamaStream complete")
+
+	return tokens, nil
+}
 
 // DiagramToCode converts Excalidraw JSON to infra code via Gemini (primary)
 // or OpenRouter (fallback).

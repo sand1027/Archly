@@ -39,6 +39,10 @@ type Config struct {
 	OpenRouterAPIKey string
 	OpenRouterModel  string
 
+	// AI — Ollama (local fallback)
+	OllamaBaseURL string
+	OllamaModel   string
+
 	// Payments
 	StripeSecretKey      string
 	StripeWebhookSecret  string
@@ -61,6 +65,8 @@ func Load() (*Config, error) {
 		GeminiAPIKey:         getEnv("GEMINI_API_KEY", ""),
 		OpenRouterAPIKey:     getEnv("OPENROUTER_API_KEY", ""),
 		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
+		OllamaBaseURL:        getEnv("OLLAMA_BASE_URL", ""),
+		OllamaModel:          getEnv("OLLAMA_MODEL", "archly-architect"),
 		StripeSecretKey:       getEnv("STRIPE_SECRET_KEY", ""),
 		StripeWebhookSecret:   getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		PayPalClientID:        getEnv("PAYPAL_CLIENT_ID", ""),

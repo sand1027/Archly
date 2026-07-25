@@ -26,17 +26,16 @@ export default function LoginPage() {
     }}>
       {/* Logo */}
       <Link href="/canvas" style={{
-        display: "flex", alignItems: "center", gap: 8,
+        display: "flex", alignItems: "center",
         textDecoration: "none", marginBottom: 28,
       }}>
-        <div style={{
-          width: 34, height: 34, borderRadius: 8,
-          background: "linear-gradient(135deg, #5b5ef4, #8b5cf6)",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 18, boxShadow: "0 4px 12px rgba(91,94,244,0.4)",
-        }}>✏️</div>
-        <span style={{ fontWeight: 800, fontSize: 20, color: "var(--pd-text)", letterSpacing: "-0.02em" }}>
-          Archly
+        <span style={{
+          fontWeight: 800,
+          fontSize: 22,
+          color: "var(--pd-text)",
+          letterSpacing: "-0.02em",
+        }}>
+          archly
         </span>
       </Link>
 

@@ -188,3 +188,97 @@ export function apiStream(
 
   return controller;
 }
+
+// ─── Named SSE helper (canvas chat: token + actions events) ───────────────
+
+export type ChatStreamHandlers = {
+  onToken: (chunk: string) => void;
+  onActions: (actionsJson: string) => void;
+  onDone: () => void;
+  onError: (err: Error) => void;
+};
+
+/**
+ * SSE client that understands `event: token` / `event: actions` plus `data: [DONE]`.
+ */
+export function apiChatStream(
+  path: string,
+  body: unknown,
+  handlers: ChatStreamHandlers
+): AbortController {
+  const controller = new AbortController();
+  const token = getAccessToken();
+
+  (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}${path}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      if (!res.ok || !res.body) {
+        let detail = res.statusText;
+        try {
+          const j = await res.json();
+          if (j?.message) detail = j.message;
+        } catch {
+          /* ignore */
+        }
+        throw new ApiError(res.status, "STREAM_ERROR", detail);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          if (!event.trim()) continue;
+
+          let eventName = "message";
+          const dataLines: string[] = [];
+          for (const line of event.split("\n")) {
+            if (line.startsWith("event: ")) {
+              eventName = line.slice(7).trim();
+            } else if (line.startsWith("data: ")) {
+              dataLines.push(line.slice(6));
+            }
+          }
+          if (dataLines.length === 0) continue;
+          const payload = dataLines.join("\n");
+
+          if (payload === "[DONE]") {
+            handlers.onDone();
+            return;
+          }
+
+          if (eventName === "actions") {
+            handlers.onActions(payload);
+          } else {
+            // token or default data chunks
+            handlers.onToken(payload);
+          }
+        }
+      }
+
+      handlers.onDone();
+    } catch (err) {
+      if ((err as Error).name === "AbortError") return;
+      handlers.onError(err instanceof Error ? err : new Error(String(err)));
+    }
+  })();
+
+  return controller;
+}

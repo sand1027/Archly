@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/rs/zerolog/log"
@@ -63,6 +64,64 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 		log.Error().Err(err).Str("user_id", uid).Msg("handler: TextToDiagramStream error after streaming started")
 		return
 	}
+}
+
+// POST /v1/ai/canvas-chat
+// SSE endpoint — streams token events + optional actions for chaos mutations.
+func (h *AIHandler) CanvasChat(w http.ResponseWriter, r *http.Request) {
+	var body services.CanvasChatRequest
+	if !Decode(w, r, &body) {
+		return
+	}
+	if len(body.Messages) == 0 {
+		BadRequest(w, "messages is required")
+		return
+	}
+	last := body.Messages[len(body.Messages)-1]
+	if last.Role != "user" || strings.TrimSpace(last.Content) == "" {
+		BadRequest(w, "last message must be a non-empty user message")
+		return
+	}
+
+	userID, _ := middleware.UserIDFromCtx(r.Context())
+	uid := ""
+	if userID != (uuid.UUID{}) {
+		uid = userID.String()
+	}
+
+	log.Info().
+		Str("user_id", uid).
+		Str("canvas", body.Canvas).
+		Int("nodes", len(body.Diagram.Nodes)).
+		Int("messages", len(body.Messages)).
+		Str("prompt", truncateStr(last.Content, 120)).
+		Msg("handler: CanvasChat request received")
+
+	if err := h.svc.CanvasChatStream(r.Context(), body, uid, w); err != nil {
+		if errors.Is(err, services.ErrAIUnavailable) {
+			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",
+				"AI features require an API key to be configured")
+			return
+		}
+		if errors.Is(err, services.ErrAIQuotaExceeded) {
+			Error(w, http.StatusTooManyRequests, "QUOTA_EXCEEDED",
+				"AI quota exceeded — free tier limit reached. Please try again later.")
+			return
+		}
+		log.Error().Err(err).Str("user_id", uid).Msg("handler: CanvasChat error")
+		// Headers may already be committed for SSE — only write JSON if not.
+		if w.Header().Get("Content-Type") == "" {
+			InternalError(w, err)
+		}
+		return
+	}
+}
+
+func truncateStr(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "…"
 }
 
 // POST /v1/ai/diagram-to-code/generate

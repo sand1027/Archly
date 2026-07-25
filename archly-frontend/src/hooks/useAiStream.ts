@@ -44,6 +44,13 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
       },
       (err) => {
         setIsStreaming(false);
+        // Stream often dies mid-Ollama run; if we already have Mermaid, still convert it.
+        const looksLikeMermaid = /flowchart\s/i.test(accumulated) || /graph\s/i.test(accumulated);
+        if (looksLikeMermaid && accumulated.trim().length > 40) {
+          optionsRef.current.onDone?.(accumulated);
+          setError(new Error("Stream ended early — used partial diagram. Re-run if nodes look incomplete."));
+          return;
+        }
         setError(err);
         optionsRef.current.onError?.(err);
       }

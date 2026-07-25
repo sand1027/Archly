@@ -122,6 +122,26 @@ function sanitizeMermaid(raw: string): string {
     `(${inner.replace(/[\/\\|&%#@:;,'"]/g, " ").replace(/\s{2,}/g, " ").trim()})`
   );
 
+  // 6. Drop a truncated trailing edge/node line (stream cut mid-token)
+  const finalLines = s.split("\n");
+  while (finalLines.length > 1) {
+    const last = finalLines[finalLines.length - 1].trim();
+    if (!last) {
+      finalLines.pop();
+      continue;
+    }
+    const opens = (last.match(/[\[{(]/g) ?? []).length;
+    const closes = (last.match(/[\]})]/g) ?? []).length;
+    const unfinished =
+      opens > closes ||
+      /--[->]\s*$/.test(last) ||
+      /\|[^|]*$/.test(last) ||
+      />[^\]\s]*$/.test(last); // e.g. KafkaEvents>Kafka events
+    if (!unfinished) break;
+    finalLines.pop();
+  }
+  s = finalLines.join("\n");
+
   return s.trim();
 }
 

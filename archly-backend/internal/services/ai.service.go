@@ -39,7 +39,7 @@ type AIService struct {
 func NewAIService(cfg *config.Config, producer kafka.Producer) *AIService {
 	return &AIService{
 		cfg:      cfg,
-		client:   &http.Client{Timeout: 120 * time.Second},
+		client:   &http.Client{Timeout: 8 * time.Minute},
 		producer: producer,
 	}
 }

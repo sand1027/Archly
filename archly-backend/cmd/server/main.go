@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -97,7 +98,17 @@ func main() {
 	r.Use(chimiddleware.RequestID)
 	r.Use(middleware.Logger())
 	r.Use(chimiddleware.Recoverer)
-	r.Use(chimiddleware.Timeout(60 * time.Second))
+	// Default 60s timeout — but AI SSE streams can run for minutes on local Ollama.
+	r.Use(func(next http.Handler) http.Handler {
+		timeout := chimiddleware.Timeout(60 * time.Second)(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if strings.HasPrefix(req.URL.Path, "/v1/ai/") {
+				next.ServeHTTP(w, req)
+				return
+			}
+			timeout.ServeHTTP(w, req)
+		})
+	})
 
 	// CORS — write headers directly so Cloudflare tunnel cannot strip them
 	allowedOrigins := make(map[string]bool)
@@ -181,8 +192,9 @@ func main() {
 		Addr:         ":" + cfg.Port,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 60 * time.Second, // longer for SSE
-		IdleTimeout:  120 * time.Second,
+		// AI diagram streams (esp. local Ollama) can run several minutes
+		WriteTimeout: 10 * time.Minute,
+		IdleTimeout:  10 * time.Minute,
 	}
 
 	// Graceful shutdown

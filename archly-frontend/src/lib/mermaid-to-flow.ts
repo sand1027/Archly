@@ -173,6 +173,10 @@ function regexParse(mermaid: string): { nodes: Map<string, string>; edges: Array
   // Node declaration regex: ID[Label] or ID(Label) or ID[(Label)] or ID{Label} or plain ID
   const nodeDecl = /^([A-Za-z0-9_-]+)(?:\[([^\]]*)\]|\(([^)]*)\)|\[\(([^)]*)\)\]|\{([^}]*)\})?$/;
 
+  // Characters allowed inside a node expression on either side of an arrow.
+  // Includes > and / so queue (`Q>Kafka x]`) and CDN (`C[/S3/]`) shapes survive.
+  const NODE_CHARS = "[A-Za-z0-9_\\[\\]()\\s{}/>.-]";
+
   // Edge patterns:
   // A --> B
   // A -- text --> B
@@ -189,20 +193,30 @@ function regexParse(mermaid: string): { nodes: Map<string, string>; edges: Array
     if (/-->|--|==|->|\.\->/.test(line)) {
       // Split on common edge operators to get parts
       // Handles: A --> B,  A -->|lbl| B,  A -- lbl --> B
-      const pipeMatch = line.match(/^([A-Za-z0-9_\[\]()\s{}-]+?)-->\|([^|]*)\|\s*([A-Za-z0-9_\[\]()\s{}-]+)$/);
-      const dashMatch = line.match(/^([A-Za-z0-9_\[\]()\s{}-]+?)--\s*([^->]*?)\s*-->\s*([A-Za-z0-9_\[\]()\s{}-]+)$/);
-      const plainMatch = line.match(/^([A-Za-z0-9_\[\]()\s{}-]+?)-->\s*([A-Za-z0-9_\[\]()\s{}-]+)$/);
+      const pipeMatch = line.match(new RegExp(`^(${NODE_CHARS}+?)\\s*-->\\|([^|]*)\\|\\s*(${NODE_CHARS}+)$`));
+      const dashMatch = line.match(new RegExp(`^(${NODE_CHARS}+?)--\\s*([^->]*?)\\s*-->\\s*(${NODE_CHARS}+)$`));
+      const plainMatch = line.match(new RegExp(`^(${NODE_CHARS}+?)\\s*-->\\s*(${NODE_CHARS}+)$`));
 
       const parseNodeExpr = (expr: string): { id: string; label: string } => {
         expr = expr.trim();
-        const bracketMatch = expr.match(/^([A-Za-z0-9_-]+)\[([^\]]*)\]$/);
-        const parenMatch   = expr.match(/^([A-Za-z0-9_-]+)\(([^)]*)\)$/);
-        const cylMatch     = expr.match(/^([A-Za-z0-9_-]+)\[\(([^)]*)\)\]$/);
-        const diamondMatch = expr.match(/^([A-Za-z0-9_-]+)\{([^}]*)\}$/);
-        if (bracketMatch) return { id: bracketMatch[1], label: bracketMatch[2] };
-        if (parenMatch)   return { id: parenMatch[1],   label: parenMatch[2] };
-        if (cylMatch)     return { id: cylMatch[1],     label: cylMatch[2] };
-        if (diamondMatch) return { id: diamondMatch[1], label: diamondMatch[2] };
+        // Order matters: the most specific wrappers must be tested first,
+        // otherwise `X[(db)]` is read as `X[...]` and `X([c])` as `X(...)`.
+        const shapes: RegExp[] = [
+          /^([A-Za-z0-9_-]+)\[\[([\s\S]*)\]\]$/,   // subroutine
+          /^([A-Za-z0-9_-]+)\[\(([\s\S]*)\)\]$/,   // cylinder / database
+          /^([A-Za-z0-9_-]+)\[\/([\s\S]*)\/\]$/,   // parallelogram / CDN, storage
+          /^([A-Za-z0-9_-]+)\(\[([\s\S]*)\]\)$/,   // stadium / cache
+          /^([A-Za-z0-9_-]+)\(\(([\s\S]*)\)\)$/,   // circle
+          /^([A-Za-z0-9_-]+)\{\{([\s\S]*)\}\}$/,   // hexagon / gateway, LB
+          /^([A-Za-z0-9_-]+)>([\s\S]*)\]$/,        // asymmetric / queue, stream
+          /^([A-Za-z0-9_-]+)\[([\s\S]*)\]$/,       // rectangle
+          /^([A-Za-z0-9_-]+)\(([\s\S]*)\)$/,       // rounded
+          /^([A-Za-z0-9_-]+)\{([\s\S]*)\}$/,       // diamond
+        ];
+        for (const re of shapes) {
+          const m = expr.match(re);
+          if (m) return { id: m[1], label: m[2].trim() || m[1] };
+        }
         // plain id
         const cleanId = expr.replace(/[^A-Za-z0-9_-]/g, "");
         return { id: cleanId || expr, label: cleanId || expr };

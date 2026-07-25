@@ -122,23 +122,23 @@ function sanitizeMermaid(raw: string): string {
     `(${inner.replace(/[\/\\|&%#@:;,'"]/g, " ").replace(/\s{2,}/g, " ").trim()})`
   );
 
-  // 6. Drop a truncated trailing edge/node line (stream cut mid-token)
+  // 6. Drop the final line only if the stream was cut mid-statement.
+  //    An unclosed shape, an odd number of pipes (open edge label), or a
+  //    dangling arrow means the line can never parse.
   const finalLines = s.split("\n");
-  while (finalLines.length > 1) {
-    const last = finalLines[finalLines.length - 1].trim();
-    if (!last) {
-      finalLines.pop();
-      continue;
-    }
-    const opens = (last.match(/[\[{(]/g) ?? []).length;
-    const closes = (last.match(/[\]})]/g) ?? []).length;
-    const unfinished =
-      opens > closes ||
-      /--[->]\s*$/.test(last) ||
-      /\|[^|]*$/.test(last) ||
-      />[^\]\s]*$/.test(last); // e.g. KafkaEvents>Kafka events
-    if (!unfinished) break;
+  while (finalLines.length > 1 && finalLines[finalLines.length - 1].trim() === "") {
     finalLines.pop();
+  }
+  if (finalLines.length > 1) {
+    const last = finalLines[finalLines.length - 1].trim();
+    const opens = (last.match(/[[{(]/g) ?? []).length;
+    const closes = (last.match(/[\]})]/g) ?? []).length;
+    const oddPipes = (last.match(/\|/g) ?? []).length % 2 === 1;
+    // An id followed by `>` is a queue shape, not an arrow — it needs a `]`.
+    const openQueue = /[A-Za-z0-9_]>[^\]]*$/.test(last);
+    if (opens > closes || oddPipes || openQueue || /--[->]?\s*$/.test(last)) {
+      finalLines.pop();
+    }
   }
   s = finalLines.join("\n");
 

@@ -68,17 +68,39 @@ type orStreamChunk struct {
 	} `json:"choices"`
 }
 
+// diagramSystemPrompt is used for cloud providers that have no Modelfile.
+// Ollama uses the archly-architect Modelfile SYSTEM instead (see ollamaStream).
+const diagramSystemPrompt = `You are an expert distributed-systems architect. Output ONLY Mermaid flowchart syntax for a production SYSTEM ARCHITECTURE diagram.
+
+STRICT RULES:
+- Start with exactly: flowchart TD
+- No prose, markdown fences, comments, or subgraph blocks
+- This is INFRASTRUCTURE architecture (clients, CDN, LB, API gateway, services, DBs, caches, queues, workers, observability) — NEVER a product journey, onboarding funnel, lesson plan, or business process
+- Target 40–55 nodes and 45–70 labeled edges
+- Include: edge/CDN, gateway, auth, multiple app services, primary+replica or polyglot DBs, Redis caches, Kafka/queues + workers, object storage, search if relevant, notifications, metrics/logs/traces
+- Label every arrow with protocol or action (HTTPS, gRPC, async, reads, writes, publishes, cache miss, …)
+- Use shapes: [svc] [(db)] ([cache]) [/cdn or s3/] {{lb/gateway}} >queue]
+- Never stop early — emit the full architecture`
+
+func diagramUserPrompt(prompt string) string {
+	return fmt.Sprintf(
+		`Design the production system architecture for: %s
+
+Interpret product names (e.g. Unacademy, Uber, Twitter) as the real-world platform's backend — NOT a curriculum or UX flow.
+
+Output ONLY Mermaid starting with "flowchart TD". Aim for 40–55 infrastructure nodes. No subgraphs. No other text.`,
+		prompt,
+	)
+}
+
 // ── TextToDiagramStream ───────────────────────────────────────────────────
 
 // TextToDiagramStream streams Mermaid syntax to w.
 // Chain: Ollama → Groq → GitHub Models → OpenRouter
 // If provider is set, skips straight to that provider.
 func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, provider string, w http.ResponseWriter) error {
-	systemPrompt := `You output only Mermaid flowchart syntax. Nothing else. No prose, no explanation, no comments, no markdown fences. Start immediately with "flowchart TD". Do NOT use subgraph blocks.`
-	userMessage := fmt.Sprintf(
-		"Generate a Mermaid flowchart diagram for: %s\n\nOutput ONLY the Mermaid syntax starting with \"flowchart TD\". No subgraph blocks. No other text.",
-		prompt,
-	)
+	systemPrompt := diagramSystemPrompt
+	userMessage := diagramUserPrompt(prompt)
 
 	// ── Provider pinning ─────────────────────────────────────────────────
 	switch strings.TrimSpace(strings.ToLower(provider)) {
@@ -212,12 +234,19 @@ func (s *AIService) openRouterStream(ctx context.Context, userID, system, user s
 // ── openAICompatStream — shared streaming logic for all OpenAI-compat APIs ─
 
 func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, model, providerName, system, user string, w http.ResponseWriter) (int, error) {
+	messages := make([]orMessage, 0, 2)
+	// Empty system lets Ollama keep the Modelfile SYSTEM (few-shot architecture examples).
+	if strings.TrimSpace(system) != "" {
+		messages = append(messages, orMessage{Role: "system", Content: system})
+	}
+	messages = append(messages, orMessage{Role: "user", Content: user})
+
 	reqBody, _ := json.Marshal(orRequest{
 		Model:       model,
-		Messages:    []orMessage{{Role: "system", Content: system}, {Role: "user", Content: user}},
+		Messages:    messages,
 		Stream:      true,
-		MaxTokens:   4000,
-		Temperature: 0.1,
+		MaxTokens:   8000,
+		Temperature: 0.15,
 	})
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(reqBody))
@@ -307,9 +336,11 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 
 // ── ollamaStream ──────────────────────────────────────────────────────────
 
+// ollamaStream uses the archly-architect Modelfile SYSTEM (do not override it).
 func (s *AIService) ollamaStream(ctx context.Context, userID, system, user string, w http.ResponseWriter) (int, error) {
 	url := strings.TrimRight(s.cfg.OllamaBaseURL, "/") + "/v1/chat/completions"
-	return s.openAICompatStream(ctx, userID, url, "", s.cfg.OllamaModel, "ollama", system, user, w)
+	_ = system // Modelfile owns system instructions + few-shot examples
+	return s.openAICompatStream(ctx, userID, url, "", s.cfg.OllamaModel, "ollama", "", user, w)
 }
 
 // ── DiagramToCode ─────────────────────────────────────────────────────────

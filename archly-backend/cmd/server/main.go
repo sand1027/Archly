@@ -113,6 +113,10 @@ func main() {
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Request-ID")
 				w.Header().Set("Access-Control-Max-Age", "300")
+				w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+				// Vary: Origin tells Cloudflare this response varies by origin
+				// and prevents it from caching a stripped version
+				w.Header().Add("Vary", "Origin")
 			}
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusOK)

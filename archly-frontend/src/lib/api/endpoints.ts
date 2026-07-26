@@ -136,7 +136,7 @@ export interface CreateShareRequest {
   /** Existing saved design to attach the share link to */
   designId?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  elements?: any[];
+  elements?: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   appState?: Record<string, any>;
   ttlHours?: number;

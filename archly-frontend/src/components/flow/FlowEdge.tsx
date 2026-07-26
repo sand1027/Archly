@@ -8,9 +8,44 @@ import {
   useReactFlow,
   type EdgeProps,
 } from "@xyflow/react";
+import { getChaosType } from "@/lib/simulation/chaos";
 import { useSimulationStore } from "@/store/simulation.store";
+import type { ChaosType } from "@/types";
 
 const PACKET_COUNT = 3;
+
+function edgeStyleForChaos(type: ChaosType | undefined, isRunning: boolean, isHighlighted: boolean): {
+  color: string;
+  dash: string;
+  showPackets: boolean;
+  packetScale: number;
+  durationScale: number;
+} {
+  switch (type) {
+    case "crash":
+      return { color: "#e53e3e", dash: "none", showPackets: false, packetScale: 0, durationScale: 1 };
+    case "zero":
+      return { color: "#6b7280", dash: "2 6", showPackets: false, packetScale: 0, durationScale: 1 };
+    case "partition":
+      return { color: "#db2777", dash: "8 6", showPackets: true, packetScale: 0.4, durationScale: 1.6 };
+    case "slow":
+      return { color: "#d97706", dash: "none", showPackets: true, packetScale: 0.7, durationScale: 2.2 };
+    case "throttle":
+      return { color: "#ea6c00", dash: "4 4", showPackets: true, packetScale: 0.35, durationScale: 1.8 };
+    case "surge":
+      return { color: "#7c3aed", dash: "none", showPackets: true, packetScale: 2.2, durationScale: 0.55 };
+    case "canary":
+      return { color: "#0891b2", dash: "6 3", showPackets: true, packetScale: 1, durationScale: 1 };
+    default:
+      return {
+        color: isRunning || isHighlighted ? "var(--pd-brand)" : "var(--pd-border-strong)",
+        dash: isRunning ? "none" : "4 3",
+        showPackets: true,
+        packetScale: 1,
+        durationScale: 1,
+      };
+  }
+}
 
 const FlowEdge = memo(({
   id,
@@ -39,22 +74,13 @@ const FlowEdge = memo(({
   const srcMetrics   = metrics[source];
   const srcInjection = activeInjections.find((i) => i.nodeId === source);
   const errorRate    = srcMetrics?.errorRate ?? 0;
-  const hasCrash     = srcInjection?.type === "crash";
+  const chaos        = edgeStyleForChaos(srcInjection?.type, isRunning, !!(hovered || selected));
 
-  const durationMs  = Math.round(1400 / speed);
-  const packetCount = Math.max(1, Math.round(PACKET_COUNT * trafficMultiplier));
+  const durationMs  = Math.round((1400 / speed) * chaos.durationScale);
+  const packetCount = Math.max(1, Math.round(PACKET_COUNT * trafficMultiplier * chaos.packetScale));
 
   const isHighlighted = hovered || selected;
-
-  const edgeColor = hasCrash
-    ? "var(--pd-sim-error)"
-    : isRunning
-    ? "var(--pd-brand)"
-    : isHighlighted
-    ? "var(--pd-brand)"
-    : "var(--pd-border-strong)";
-
-  const edgeStrokeWidth = isHighlighted ? 2 : isRunning ? 1.5 : 1;
+  const edgeStrokeWidth = isHighlighted ? 2.5 : isRunning || srcInjection ? 2 : 1;
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -64,7 +90,7 @@ const FlowEdge = memo(({
     [id, deleteElements]
   );
 
-  const showLabel = isHighlighted || (isRunning && !!srcMetrics);
+  const showLabel = isHighlighted || (isRunning && !!srcMetrics) || !!srcInjection;
 
   return (
     <>
@@ -85,27 +111,28 @@ const FlowEdge = memo(({
         path={edgePath}
         markerEnd={markerEnd}
         style={{
-          stroke: edgeColor,
+          stroke: chaos.color,
           strokeWidth: edgeStrokeWidth,
-          strokeDasharray: isRunning ? "none" : "4 3",
+          strokeDasharray: chaos.dash,
           transition: "stroke 150ms, stroke-width 150ms",
-          opacity: isRunning ? 1 : isHighlighted ? 1 : 0.55,
-          pointerEvents: "none", // handled by the hit area above
+          opacity: isRunning || srcInjection ? 1 : isHighlighted ? 1 : 0.55,
+          pointerEvents: "none",
           ...style,
         }}
       />
 
       {/* ── Animated packet dots ── */}
-      {isRunning && !hasCrash && (
+      {isRunning && chaos.showPackets && (
         <PacketDots
           edgePath={edgePath}
           count={packetCount}
           durationMs={durationMs}
           errorRate={errorRate}
+          canary={srcInjection?.type === "canary"}
         />
       )}
 
-      {/* ── Label: delete button on hover / traffic rate during sim ── */}
+      {/* ── Label: delete / chaos / traffic ── */}
       {showLabel && (
         <EdgeLabelRenderer>
           <div
@@ -121,8 +148,25 @@ const FlowEdge = memo(({
               pointerEvents: "all",
             }}
           >
-            {/* Traffic badge — shown during simulation */}
-            {isRunning && srcMetrics && (
+            {srcInjection && (
+              <div style={{
+                background: getChaosType(srcInjection.type).color,
+                color: "#fff",
+                borderRadius: "var(--pd-radius-full)",
+                padding: "1px 7px",
+                fontSize: 9,
+                fontWeight: 800,
+                whiteSpace: "nowrap",
+                boxShadow: "var(--pd-shadow-sm)",
+                userSelect: "none",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}>
+                {getChaosType(srcInjection.type).label}
+              </div>
+            )}
+
+            {isRunning && srcMetrics && !srcInjection && (
               <div style={{
                 background: "var(--pd-surface)",
                 border: "1px solid var(--pd-border)",
@@ -139,7 +183,6 @@ const FlowEdge = memo(({
               </div>
             )}
 
-            {/* Delete button — shown on hover */}
             {isHighlighted && (
               <button
                 onClick={handleDelete}
@@ -186,20 +229,26 @@ export default FlowEdge;
 
 // ─── Packet dots ──────────────────────────────────────────────────────────
 
-function PacketDots({ edgePath, count, durationMs, errorRate }: {
+function PacketDots({ edgePath, count, durationMs, errorRate, canary }: {
   edgePath: string;
   count: number;
   durationMs: number;
   errorRate: number;
+  canary?: boolean;
 }) {
   const dots = Array.from({ length: count }, (_, i) => {
     const isError = Math.random() < errorRate;
     const delay   = -(durationMs * (i / count));
+    const fill = isError
+      ? "var(--pd-sim-error)"
+      : canary && i % 3 === 0
+      ? "#0891b2"
+      : "var(--pd-sim-packet)";
     return (
       <circle
         key={i}
         r={3.5}
-        fill={isError ? "var(--pd-sim-error)" : "var(--pd-sim-packet)"}
+        fill={fill}
         opacity={0.9}
         style={{
           offsetPath: `path('${edgePath}')`,

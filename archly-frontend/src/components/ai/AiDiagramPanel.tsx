@@ -9,7 +9,8 @@ import { convertMermaidToCanvas } from "@/lib/mermaid-to-canvas";
 import { convertMermaidToFlow } from "@/lib/mermaid-to-flow";
 import { getExcalidrawAPI } from "@/lib/excalidraw-api";
 import ModelSelect from "@/components/ai/ModelSelect";
-import { readStoredAiProvider, type AiProvider } from "@/lib/ai/providers";
+import { readStoredAiProvider, storeAiProvider, type AiProvider } from "@/lib/ai/providers";
+import { toast } from "@/store/toast.store";
 import type { ExcalidrawElement } from "@/types";
 
 // Lazily resolved — same pattern as MermaidEditor
@@ -150,6 +151,10 @@ interface AiDiagramPanelProps {
   onClose: () => void;
   /** Switch to Flow tab before inserting generated nodes */
   onPreferFlow?: () => void;
+  /** Prefill + optionally auto-start when opened from the studio hero */
+  initialPrompt?: string | null;
+  initialProvider?: AiProvider | null;
+  autoStart?: boolean;
 }
 
 const PROMPTS = [
@@ -161,15 +166,23 @@ const PROMPTS = [
   "Design a notification system at 10M/day",
 ];
 
-export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiagramPanelProps) {
+export default function AiDiagramPanel({
+  isOpen,
+  onClose,
+  onPreferFlow,
+  initialPrompt,
+  initialProvider,
+  autoStart,
+}: AiDiagramPanelProps) {
   const [prompt, setPrompt] = useState("");
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [target, setTarget] = useState<"canvas" | "flow">("canvas");
+  const [target, setTarget] = useState<"canvas" | "flow">("flow");
   const [provider, setProvider] = useState<AiProvider>("groq");
   const { isAuthenticated } = useAuth();
-  const targetRef = useRef<"canvas" | "flow">("canvas");
+  const targetRef = useRef<"canvas" | "flow">("flow");
   const providerRef = useRef<AiProvider>("groq");
+  const autoStartedRef = useRef(false);
 
   useEffect(() => {
     targetRef.current = target;
@@ -182,6 +195,21 @@ export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiag
   useEffect(() => {
     queueMicrotask(() => setProvider(readStoredAiProvider()));
   }, []);
+
+  useEffect(() => {
+    if (!isOpen) {
+      autoStartedRef.current = false;
+      return;
+    }
+    if (initialProvider) {
+      setProvider(initialProvider);
+      storeAiProvider(initialProvider);
+    }
+    if (initialPrompt) {
+      setPrompt(initialPrompt);
+      setTarget("flow");
+    }
+  }, [isOpen, initialPrompt, initialProvider]);
 
   const { stream, cancel, isStreaming, response, error } = useAiStream({
     onDone: async (fullResponse) => {
@@ -221,6 +249,7 @@ export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiag
         }));
         useFlowStore.getState().requestFitView();
         setStatusMsg(`✓ Added ${newNodes.length} nodes to Flow canvas`);
+        toast(`Diagram ready — ${newNodes.length} nodes on Flow`, "success");
         setTimeout(() => { setStatusMsg(null); onClose(); }, 1500);
         return;
       }
@@ -269,6 +298,32 @@ export default function AiDiagramPanel({ isOpen, onClose, onPreferFlow }: AiDiag
     setActivePrompt(prompt.trim());
     stream(prompt.trim(), providerRef.current);
   }, [prompt, isStreaming, stream]);
+
+  useEffect(() => {
+    if (!isOpen || !autoStart || !initialPrompt || autoStartedRef.current) return;
+    if (isStreaming) return;
+    autoStartedRef.current = true;
+    const p = initialPrompt.trim();
+    if (!p) return;
+    setPrompt(p);
+    setTarget("flow");
+    setActivePrompt(p);
+    setStatusMsg(null);
+    const prov = initialProvider ?? providerRef.current;
+    if (initialProvider) providerRef.current = initialProvider;
+    stream(p, prov);
+  }, [isOpen, autoStart, initialPrompt, initialProvider, isStreaming, stream]);
+
+  useEffect(() => {
+    if (!error) return;
+    const msg = typeof error === "string" ? error : error.message;
+    const lower = msg.toLowerCase();
+    if (lower.includes("quota") || lower.includes("too many") || lower.includes("rate")) {
+      toast("AI quota exceeded — try another provider in ⚙ settings", "error", 4500);
+    } else if (lower.includes("network") || lower.includes("unavailable")) {
+      toast(msg, "error", 4000);
+    }
+  }, [error]);
 
   if (!isOpen) return null;
 

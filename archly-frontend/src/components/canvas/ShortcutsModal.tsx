@@ -8,14 +8,17 @@ interface ShortcutsModalProps {
 }
 
 const SHORTCUTS: { keys: string; action: string }[] = [
+  { keys: "⌘ / Ctrl + K", action: "Command palette" },
   { keys: "Alt + M", action: "Open Mermaid editor" },
-  { keys: "Alt + A", action: "Open AI diagram panel" },
-  { keys: "Alt + C", action: "Toggle architecture chat" },
+  { keys: "Alt + A", action: "Open AI Generate" },
+  { keys: "Alt + C", action: "Open AI Chat" },
   { keys: "Alt + G", action: "Toggle student guide" },
   { keys: "Alt + S", action: "Save session" },
   { keys: "Alt + H", action: "Toggle history panel" },
-  { keys: "Alt + 1", action: "Switch to Canvas tab" },
-  { keys: "Alt + 2", action: "Switch to Flow tab" },
+  { keys: "Alt + D", action: "Design mode" },
+  { keys: "Alt + E", action: "Export mode" },
+  { keys: "Alt + 1", action: "Switch to Freehand" },
+  { keys: "Alt + 2", action: "Switch to Flow" },
   { keys: "?", action: "Show this shortcuts list" },
   { keys: "Ctrl + Z", action: "Undo (Flow)" },
   { keys: "Ctrl + Shift + Z", action: "Redo (Flow)" },

@@ -32,11 +32,11 @@ import { useFlowStore } from "@/store/flow.store";
 import { useSimulationStore } from "@/store/simulation.store";
 import { useTheme } from "@/providers/theme-provider";
 import { getComponent } from "@/lib/components-registry";
+import { getChaosType } from "@/lib/simulation/chaos";
 import FlowNode from "./FlowNode";
 import GuideNoteNode from "./GuideNoteNode";
 import FlowEdge from "./FlowEdge";
 import FlowContextMenu from "./FlowContextMenu";
-import FlowSimBar from "./FlowSimBar";
 import FlowBottleneckPanel from "./FlowBottleneckPanel";
 
 // Register custom node and edge types — must be stable (defined outside component)
@@ -61,6 +61,7 @@ function FlowCanvasInner() {
   } = useFlowStore();
 
   const isRunning = useSimulationStore((s) => s.isRunning);
+  const pendingChaosType = useSimulationStore((s) => s.pendingChaosType);
 
   // Center graph after programmatic loads (AI / Mermaid / History / labs).
   // Retries matter: Flow is often display:none until the tab switches.
@@ -166,9 +167,21 @@ function FlowCanvasInner() {
     setDragOverEdgeId(null);
   }, [screenToFlowPosition, dragOverEdgeId, addNode, insertNodeOnEdge]);
 
-  // ── Node click → set selected in flow store (PropertiesPanel reads it) ──
+  // ── Node click → select, or apply pending chaos from ChaosPanel ─────────
   const onNodeClick = useCallback((_e: React.MouseEvent, node: { id: string }) => {
     setSelectedNodeId(node.id);
+
+    const pending = useSimulationStore.getState().pendingChaosType;
+    if (!pending || !useSimulationStore.getState().isRunning) return;
+
+    useSimulationStore.getState().injectChaos({
+      id: `chaos-${Date.now()}`,
+      type: pending,
+      nodeId: node.id,
+      params: getChaosType(pending).defaultParams,
+      injectedAt: Date.now(),
+    });
+    useSimulationStore.getState().setPendingChaosType(null);
   }, [setSelectedNodeId]);
 
   // ── Pane click → deselect ────────────────────────────────────────────────
@@ -231,7 +244,10 @@ function FlowCanvasInner() {
 
   return (
     <div
-      style={{ width: "100%", height: "100%", position: "relative" }}
+      style={{
+        width: "100%", height: "100%", position: "relative",
+        cursor: pendingChaosType ? "crosshair" : undefined,
+      }}
       onDragOver={onDragOver}
       onDrop={onDrop}
       onKeyDown={onKeyDown}
@@ -300,30 +316,7 @@ function FlowCanvasInner() {
         />
       </ReactFlow>
 
-      {/* ── Empty state hint ── */}
-      {nodes.length === 0 && (
-        <div style={{
-          position: "absolute", inset: 0,
-          display: "flex", flexDirection: "column",
-          alignItems: "center", justifyContent: "center",
-          pointerEvents: "none", gap: 10,
-        }}>
-          <div style={{
-            fontSize: 36, opacity: 0.3,
-          }}>⬡</div>
-          <p style={{
-            fontSize: 14, fontWeight: 600,
-            color: "var(--pd-text-subtle)", textAlign: "center",
-          }}>
-            Drag components from the left panel
-            <br />to start building your architecture
-          </p>
-          <p style={{ fontSize: 12, color: "var(--pd-text-subtle)" }}>
-            Connect nodes by dragging from a handle
-            <br />Drop onto an edge to insert between nodes
-          </p>
-        </div>
-      )}
+      {/* Empty state handled by FlowEmptyHero in page.tsx */}
 
       {/* ── Smart insertion hint ── */}
       {dragOverEdgeId && (
@@ -342,8 +335,39 @@ function FlowCanvasInner() {
         </div>
       )}
 
+      {/* ── Pending chaos: click a node ── */}
+      {pendingChaosType && isRunning && (
+        <div style={{
+          position: "absolute", top: 12, left: "50%",
+          transform: "translateX(-50%)",
+          background: getChaosType(pendingChaosType).color,
+          color: "#fff", fontSize: 12, fontWeight: 700,
+          padding: "6px 14px", borderRadius: "var(--pd-radius-full)",
+          boxShadow: "var(--pd-shadow)",
+          zIndex: 50,
+          display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span>
+            {getChaosType(pendingChaosType).icon} Click a node to inject{" "}
+            <strong>{getChaosType(pendingChaosType).label}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => useSimulationStore.getState().setPendingChaosType(null)}
+            style={{
+              background: "rgba(255,255,255,0.2)", border: "none",
+              color: "#fff", borderRadius: "50%", width: 20, height: 20,
+              cursor: "pointer", fontWeight: 700, lineHeight: 1,
+            }}
+            title="Cancel"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* ── Simulation running badge ── */}
-      {isRunning && (
+      {isRunning && !pendingChaosType && (
         <div style={{
           position: "absolute", top: 12, right: 12,
           display: "flex", alignItems: "center", gap: 6,

@@ -20,17 +20,19 @@ export const metadata: Metadata = {
     "excalidraw",
     "interview",
   ],
-  icons: {
-    icon: [{ url: "/favicon.png", type: "image/png" }],
-    apple: [{ url: "/favicon.png", type: "image/png" }],
-    shortcut: "/favicon.png",
-  },
   openGraph: {
     title: "Archly — System Design Simulator",
     description:
       "Design, simulate, and chaos-test distributed system architectures in the browser.",
     type: "website",
-    images: [{ url: "/favicon.png" }],
+    images: [{ url: "/og-archly.png", width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Archly — System Design Simulator",
+    description:
+      "Design, simulate, and chaos-test distributed system architectures in the browser.",
+    images: ["/og-archly.png"],
   },
 };
 

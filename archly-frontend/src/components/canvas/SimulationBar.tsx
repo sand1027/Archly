@@ -52,7 +52,7 @@ export default function SimulationBar({
           flexShrink: 0,
           boxShadow: isRunning ? "none" : "0 2px 6px rgba(91,94,244,0.3)",
         }}>
-        <span style={{ fontSize: 10 }}>{isRunning ? "⏹" : "▶"}</span>
+        <span style={{ fontSize: 10 }}>{isRunning ? "■" : "▶"}</span>
         <span>{isRunning ? "Stop" : "Simulate"}</span>
       </button>
 
@@ -83,15 +83,15 @@ export default function SimulationBar({
       <div style={{ flex: 1, minWidth: 0 }}>
         {bottlenecks.length > 0 ? (
           <span style={{ fontSize: 12, color: "var(--pd-sim-bottleneck)", fontWeight: 600 }}>
-            ⚠️ {bottlenecks.length} bottleneck{bottlenecks.length > 1 ? "s" : ""} — {bottlenecks[0]?.reason}
+            {bottlenecks.length} bottleneck{bottlenecks.length > 1 ? "s" : ""} — {bottlenecks[0]?.reason}
           </span>
         ) : isRunning ? (
           <span style={{ fontSize: 12, color: "var(--pd-sim-ok)", fontWeight: 600 }}>
-            ✓ All nodes healthy
+            All nodes healthy
           </span>
         ) : (
           <span style={{ fontSize: 12, color: "var(--pd-text-subtle)" }}>
-            Connect components and run the simulation to get feedback.
+            Connect components, then run simulation
           </span>
         )}
       </div>

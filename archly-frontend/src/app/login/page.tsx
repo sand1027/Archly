@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/providers/auth-provider";
+import { useTheme } from "@/providers/theme-provider";
 import { authApi } from "@/lib/api/endpoints";
 import { useAuthStore } from "@/store/auth.store";
 import type { AuthUser } from "@/types";
@@ -11,7 +12,9 @@ import type { AuthUser } from "@/types";
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
+  const { resolvedTheme } = useTheme();
   const [tab, setTab] = useState<"signup" | "login">("signup");
+  const isDark = resolvedTheme === "dark";
 
   return (
     <main style={{
@@ -25,18 +28,23 @@ export default function LoginPage() {
       padding: "24px 16px",
     }}>
       {/* Logo */}
-      <Link href="/canvas" style={{
+      <Link href="/canvas" aria-label="Archly" style={{
         display: "flex", alignItems: "center",
         textDecoration: "none", marginBottom: 28,
       }}>
-        <span style={{
-          fontWeight: 800,
-          fontSize: 22,
-          color: "var(--pd-text)",
-          letterSpacing: "-0.02em",
-        }}>
-          archly
-        </span>
+        <img
+          src="/brand-navbar.png"
+          alt="Archly"
+          height={40}
+          width={159}
+          draggable={false}
+          style={{
+            height: 40,
+            width: "auto",
+            display: "block",
+            filter: isDark ? undefined : "invert(1) hue-rotate(180deg)",
+          }}
+        />
       </Link>
 
       <div style={{

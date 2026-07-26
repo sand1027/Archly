@@ -2,6 +2,7 @@
 
 import { memo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { getChaosType } from "@/lib/simulation/chaos";
 import { useSimulationStore } from "@/store/simulation.store";
 import { useFlowStore, type FlowNodeData } from "@/store/flow.store";
 import type { FlowNode } from "@/store/flow.store";
@@ -31,15 +32,14 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
   const updateLabel = useFlowStore((s) => s.updateNodeLabel);
 
   const m          = metrics[id];
-  const hasChaos   = injections.some((i) => i.nodeId === id);
-  const isCrashed  = m && m.errorRate >= 1;
+  const nodeInj    = injections.filter((i) => i.nodeId === id);
+  const primaryInj = nodeInj[nodeInj.length - 1]; // latest chaos wins visually
+  const chaosDef   = primaryInj ? getChaosType(primaryInj.type) : null;
+  const isCrashed  = primaryInj?.type === "crash" || (!!m && m.errorRate >= 1);
   const isBottle   = m && m.isBottleneck && !isCrashed;
 
-  const borderColor = selected
-    ? "var(--pd-brand)"
-    : hasChaos
-    ? (isCrashed ? "var(--pd-sim-error)" : "var(--pd-sim-warn)")
-    : strokeColor;
+  // Chaos color always wins over idle stroke; selection adds an outer ring.
+  const borderColor = chaosDef ? chaosDef.color : strokeColor;
 
   const handleLabelCommit = () => {
     setIsEditing(false);
@@ -54,11 +54,11 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
         borderRadius: "var(--pd-radius-lg)",
         background: "var(--pd-surface)",
         border: `2px solid ${borderColor}`,
-        boxShadow: selected
-          ? `0 0 0 3px color-mix(in srgb, ${strokeColor} 20%, transparent), var(--pd-shadow)`
-          : isCrashed
-          ? "0 0 12px rgba(229,62,62,0.3)"
-          : "var(--pd-shadow-sm)",
+        boxShadow: [
+          selected ? `0 0 0 3px color-mix(in srgb, var(--pd-brand) 35%, transparent)` : null,
+          chaosDef ? `0 0 14px color-mix(in srgb, ${chaosDef.color} 45%, transparent)` : null,
+          "var(--pd-shadow-sm)",
+        ].filter(Boolean).join(", "),
         transition: "border-color 150ms, box-shadow 150ms",
         overflow: "hidden",
         fontFamily: "var(--ui-font, Assistant, sans-serif)",
@@ -139,20 +139,14 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
           </span>
         )}
 
-        {/* Status dot */}
-        {isCrashed && (
+        {/* Status dot — colored by chaos type */}
+        {chaosDef && (
           <span style={{
             width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-            background: "var(--pd-sim-error)",
-            boxShadow: "0 0 6px var(--pd-sim-error)",
-          }} title="CRASHED" />
-        )}
-        {!isCrashed && hasChaos && (
-          <span style={{
-            width: 7, height: 7, borderRadius: "50%", flexShrink: 0,
-            background: "var(--pd-sim-warn)",
-            animation: "packet-pulse 1s ease-in-out infinite",
-          }} title="Chaos injected" />
+            background: chaosDef.color,
+            boxShadow: `0 0 6px ${chaosDef.color}`,
+            animation: isCrashed ? undefined : "packet-pulse 1s ease-in-out infinite",
+          }} title={chaosDef.label} />
         )}
       </div>
 
@@ -184,16 +178,21 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
         </div>
       )}
 
-      {/* ── Crash overlay ───────────────────────────────── */}
-      {isCrashed && (
+      {/* ── Chaos banner (every type, not just crash) ───── */}
+      {chaosDef && (
         <div style={{
           padding: "4px 10px",
-          background: "color-mix(in srgb, var(--pd-sim-error) 15%, transparent)",
-          borderTop: "1px solid color-mix(in srgb, var(--pd-sim-error) 30%, transparent)",
-          fontSize: 9, fontWeight: 800, color: "var(--pd-sim-error)",
+          background: `color-mix(in srgb, ${chaosDef.color} 16%, transparent)`,
+          borderTop: `1px solid color-mix(in srgb, ${chaosDef.color} 35%, transparent)`,
+          fontSize: 9, fontWeight: 800, color: chaosDef.color,
           textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center",
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 4,
         }}>
-          ✕ Crashed
+          <span aria-hidden>{chaosDef.icon}</span>
+          <span>{chaosDef.label}</span>
+          {nodeInj.length > 1 && (
+            <span style={{ opacity: 0.7 }}>+{nodeInj.length - 1}</span>
+          )}
         </div>
       )}
     </div>

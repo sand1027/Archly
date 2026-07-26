@@ -24,32 +24,32 @@
 
 import { useState, useMemo } from "react";
 import { useSimulationStore } from "@/store/simulation.store";
+import { useFlowStore } from "@/store/flow.store";
 import {
   CHAOS_SCENARIOS,
-  CHAOS_BY_GROUP,
   CHAOS_GROUP_LABELS,
+  getChaosType,
   type ChaosGroup,
   type ChaosScenario,
 } from "@/lib/simulation/chaos";
+import { CHAOS_PACKS } from "@/lib/simulation/chaos-packs";
 import type { ChaosType } from "@/types";
 
 interface ChaosPanelProps {
-  isOpen: boolean;
-  onClose: () => void;
+  isOpen?: boolean;
+  onClose?: () => void;
+  /** dock = fill parent sidebar; float = floating bottom panel (legacy) */
+  layout?: "dock" | "float";
 }
 
 // Groups in the order they appear in the screenshot
 const GROUP_ORDER: ChaosGroup[] = ["infrastructure", "network", "application", "global"];
 
-// Colors per group matching the muted grayscale icons in archly
-const GROUP_COLORS: Record<ChaosGroup, string> = {
-  infrastructure: "#6b7280",
-  network:        "#6b7280",
-  application:    "#6b7280",
-  global:         "#6b7280",
-};
-
-export default function ChaosPanel({ isOpen, onClose }: ChaosPanelProps) {
+export default function ChaosPanel({
+  isOpen = true,
+  onClose,
+  layout = "dock",
+}: ChaosPanelProps) {
   const [tab, setTab]       = useState<"presets" | "chaos">("chaos");
   const [search, setSearch] = useState("");
 
@@ -70,7 +70,6 @@ export default function ChaosPanel({ isOpen, onClose }: ChaosPanelProps) {
     );
   }, [search]);
 
-  // Group the filtered results
   const groupedResults = useMemo(() => {
     return GROUP_ORDER.map((group) => ({
       group,
@@ -81,83 +80,108 @@ export default function ChaosPanel({ isOpen, onClose }: ChaosPanelProps) {
 
   if (!isOpen) return null;
 
+  const body = (
+    <>
+      <div
+        style={{
+          display: "flex",
+          borderBottom: "1px solid var(--pd-border)",
+          flexShrink: 0,
+          background: "var(--pd-surface)",
+        }}
+      >
+        {(["presets", "chaos"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setTab(t)}
+            style={{
+              flex: 1,
+              padding: "10px 0",
+              border: "none",
+              background: "transparent",
+              fontSize: 12,
+              fontWeight: tab === t ? 800 : 600,
+              color: tab === t ? "var(--pd-brand)" : "var(--pd-text-muted)",
+              cursor: "pointer",
+              borderBottom: tab === t ? "2px solid var(--pd-brand)" : "2px solid transparent",
+              marginBottom: -1,
+              textTransform: "capitalize",
+            }}
+          >
+            {t === "presets" ? "Presets" : "Chaos"}
+          </button>
+        ))}
+      </div>
+
+      {tab === "presets" ? (
+        <PresetsTab />
+      ) : (
+        <ChaosTab
+          isRunning={isRunning}
+          search={search}
+          setSearch={setSearch}
+          groupedResults={groupedResults}
+          activeInjections={activeInjections}
+          pendingChaosType={pendingChaosType}
+          setPendingChaosType={setPendingChaosType}
+          clearAllChaos={clearAllChaos}
+          onPicked={() => {
+            if (layout === "float") onClose?.();
+          }}
+        />
+      )}
+    </>
+  );
+
+  if (layout === "dock") {
+    return (
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
+          background: "var(--pd-sidebar-bg)",
+        }}
+      >
+        {body}
+      </div>
+    );
+  }
+
   return (
     <>
-      {/* Backdrop */}
       <div
         onClick={onClose}
         style={{
-          position: "fixed", inset: 0,
+          position: "fixed",
+          inset: 0,
           zIndex: 185,
           background: "transparent",
         }}
       />
-
-      {/* Panel — anchored to bottom-center above SimulationBar */}
-      <div style={{
-        position: "absolute",
-        bottom: "calc(var(--pd-simbar-height) + 10px)",
-        left: "50%",
-        transform: "translateX(-50%)",
-        zIndex: 190,
-        width: 320,
-        maxHeight: "calc(60vh)",
-        background: "var(--pd-surface)",
-        border: "1px solid var(--pd-border)",
-        borderRadius: "var(--pd-radius-lg)",
-        boxShadow: "var(--pd-shadow-lg)",
-        display: "flex",
-        flexDirection: "column",
-        overflow: "hidden",
-        animation: "slide-in-up 180ms var(--pd-ease)",
-      }}>
-
-        {/* ── Tab row ── */}
-        <div style={{
+      <div
+        style={{
+          position: "absolute",
+          bottom: "calc(var(--pd-simbar-height) + 10px)",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 190,
+          width: 320,
+          maxHeight: "60vh",
+          background: "var(--pd-surface)",
+          border: "1px solid var(--pd-border)",
+          borderRadius: "var(--pd-radius-lg)",
+          boxShadow: "var(--pd-shadow-lg)",
           display: "flex",
-          borderBottom: "1px solid var(--pd-border)",
-          flexShrink: 0,
-          background: "var(--pd-sidebar-bg)",
-        }}>
-          {(["presets", "chaos"] as const).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                flex: 1,
-                padding: "10px 0",
-                border: "none",
-                background: "transparent",
-                fontSize: 13, fontWeight: tab === t ? 700 : 500,
-                color: tab === t ? "var(--pd-brand)" : "var(--pd-text-muted)",
-                cursor: "pointer",
-                borderBottom: tab === t
-                  ? "2px solid var(--pd-brand)"
-                  : "2px solid transparent",
-                transition: "all 120ms",
-                textTransform: "capitalize",
-              }}
-            >
-              {t === "presets" ? "Presets" : "Chaos"}
-            </button>
-          ))}
-        </div>
-
-        {tab === "presets" ? (
-          <PresetsTab />
-        ) : (
-          <ChaosTab
-            isRunning={isRunning}
-            search={search}
-            setSearch={setSearch}
-            groupedResults={groupedResults}
-            activeInjections={activeInjections}
-            pendingChaosType={pendingChaosType}
-            setPendingChaosType={setPendingChaosType}
-            clearAllChaos={clearAllChaos}
-            onClose={onClose}
-          />
-        )}
+          flexDirection: "column",
+          overflow: "hidden",
+          animation: "slide-in-up 180ms var(--pd-ease)",
+        }}
+      >
+        {body}
       </div>
     </>
   );
@@ -166,25 +190,74 @@ export default function ChaosPanel({ isOpen, onClose }: ChaosPanelProps) {
 // ─── Presets tab ──────────────────────────────────────────────────────────
 
 function PresetsTab() {
-  const PRESETS = [
-    { id: "twitter",   name: "Twitter Feed",       desc: "Fan-out on write, Redis, Cassandra" },
-    { id: "uber",      name: "Ride Sharing",        desc: "WebSocket, geo-sharding, Kafka" },
-    { id: "netflix",   name: "Video Streaming",     desc: "CDN, HLS/DASH, async transcoding" },
-    { id: "url",       name: "URL Shortener",       desc: "CDN for popular, DB for rare" },
-    { id: "chat",      name: "Chat App",            desc: "WebSocket, Redis pub/sub" },
-    { id: "ml",        name: "ML Feature Store",    desc: "Online + offline, streaming" },
-    { id: "payment",   name: "Payment System",      desc: "Idempotency, circuit breaker" },
-    { id: "notification","name": "Notification System", desc: "10M/day, push+email+SMS" },
+  const isRunning = useSimulationStore((s) => s.isRunning);
+  const injectChaos = useSimulationStore((s) => s.injectChaos);
+  const clearAllChaos = useSimulationStore((s) => s.clearAllChaos);
+
+  const applyPack = (pack: (typeof CHAOS_PACKS)[number]) => {
+    if (!isRunning) return;
+    const nodes = useFlowStore.getState().nodes.filter((n) => n.type === "flowNode");
+    if (nodes.length === 0) return;
+    clearAllChaos();
+    pack.injections.forEach((type, i) => {
+      const node = nodes[i % nodes.length];
+      injectChaos({
+        id: `pack-${pack.id}-${i}-${Date.now()}`,
+        type,
+        nodeId: node.id,
+        params: getChaosType(type).defaultParams,
+        injectedAt: Date.now(),
+      });
+    });
+  };
+
+  const ARCH_PRESETS = [
+    { id: "twitter", name: "Twitter Feed", desc: "Fan-out on write, Redis, Cassandra" },
+    { id: "uber", name: "Ride Sharing", desc: "WebSocket, geo-sharding, Kafka" },
+    { id: "netflix", name: "Video Streaming", desc: "CDN, HLS/DASH, async transcoding" },
+    { id: "url", name: "URL Shortener", desc: "CDN for popular, DB for rare" },
   ];
 
   return (
     <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto", padding: 10 }}>
+      <p style={{ fontSize: 11, color: "var(--pd-text-subtle)", marginBottom: 8, fontWeight: 700 }}>
+        Chaos scenario packs
+      </p>
       <p style={{ fontSize: 11, color: "var(--pd-text-subtle)", marginBottom: 10 }}>
-        Load a pre-built architecture onto the canvas.
+        {isRunning
+          ? "Applies multiple chaos types across Flow nodes."
+          : "Start simulation first, then run a pack."}
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+        {CHAOS_PACKS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            disabled={!isRunning}
+            onClick={() => applyPack(p)}
+            style={{
+              display: "flex", flexDirection: "column", alignItems: "flex-start",
+              gap: 2, padding: "8px 12px",
+              borderRadius: "var(--pd-radius)",
+              border: "1px solid var(--pd-border)",
+              background: "var(--pd-bg-subtle)",
+              cursor: isRunning ? "pointer" : "not-allowed",
+              textAlign: "left",
+              opacity: isRunning ? 1 : 0.5,
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--pd-text)" }}>{p.name}</span>
+            <span style={{ fontSize: 11, color: "var(--pd-text-subtle)" }}>{p.description}</span>
+          </button>
+        ))}
+      </div>
+
+      <p style={{ fontSize: 11, color: "var(--pd-text-subtle)", marginBottom: 10, fontWeight: 700 }}>
+        Architecture ideas
       </p>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {PRESETS.map((p) => (
-          <button
+        {ARCH_PRESETS.map((p) => (
+          <div
             key={p.id}
             style={{
               display: "flex", flexDirection: "column", alignItems: "flex-start",
@@ -192,23 +265,12 @@ function PresetsTab() {
               borderRadius: "var(--pd-radius)",
               border: "1px solid var(--pd-border)",
               background: "var(--pd-bg-subtle)",
-              cursor: "pointer", textAlign: "left",
-              transition: "border-color 120ms, background 120ms",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--pd-brand)";
-              (e.currentTarget as HTMLElement).style.background = "var(--pd-brand-subtle)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--pd-border)";
-              (e.currentTarget as HTMLElement).style.background = "var(--pd-bg-subtle)";
+              textAlign: "left",
             }}
           >
-            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--pd-text)" }}>
-              {p.name}
-            </span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--pd-text)" }}>{p.name}</span>
             <span style={{ fontSize: 11, color: "var(--pd-text-subtle)" }}>{p.desc}</span>
-          </button>
+          </div>
         ))}
       </div>
     </div>
@@ -227,19 +289,19 @@ interface ChaosTabProps {
   pendingChaosType: ChaosType | null;
   setPendingChaosType: (t: ChaosType | null) => void;
   clearAllChaos: () => void;
-  onClose: () => void;
+  onPicked: () => void;
 }
 
 function ChaosTab({
   isRunning, search, setSearch,
   groupedResults, activeInjections,
-  pendingChaosType, setPendingChaosType, clearAllChaos, onClose,
+  pendingChaosType, setPendingChaosType, clearAllChaos, onPicked,
 }: ChaosTabProps) {
 
   const handleScenarioClick = (scenario: ChaosScenario) => {
     if (!isRunning) return;
     setPendingChaosType(scenario.chaosType);
-    onClose(); // user picks target on canvas
+    onPicked();
   };
 
   return (

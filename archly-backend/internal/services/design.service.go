@@ -112,7 +112,7 @@ func (s *DesignService) Get(ctx context.Context, id uuid.UUID) (sqlcgen.Design, 
 }
 
 func (s *DesignService) Create(ctx context.Context, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string, publish bool) (sqlcgen.Design, error) {
-	if kind != "flow" {
+	if kind != "flow" && kind != "schema" {
 		kind = "canvas"
 	}
 	d, err := s.q.CreateDesign(ctx, userID, title, description, elements, appState, tags, kind)
@@ -130,7 +130,7 @@ func (s *DesignService) Create(ctx context.Context, userID uuid.UUID, title, des
 }
 
 func (s *DesignService) Update(ctx context.Context, id, userID uuid.UUID, title, description string, elements, appState json.RawMessage, tags []string, kind string) (sqlcgen.Design, error) {
-	if kind != "flow" {
+	if kind != "flow" && kind != "schema" {
 		kind = "canvas"
 	}
 	d, err := s.q.UpdateDesign(ctx, id, userID, title, description, elements, appState, tags, kind)

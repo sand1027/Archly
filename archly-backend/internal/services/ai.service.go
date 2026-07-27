@@ -93,23 +93,64 @@ Output ONLY Mermaid starting with "flowchart TD". Aim for 40–55 infrastructure
 	)
 }
 
+// schemaSystemPrompt — used for cloud providers (no Modelfile).
+// Ollama schema mode uses archly-schema Modelfile SYSTEM instead (empty override).
+const schemaSystemPrompt = `You are an expert database schema diagram generator for Archly. Output ONLY valid Mermaid erDiagram syntax — no prose, no markdown fences, no backticks, no explanations before or after.
+
+STRICT OUTPUT RULES:
+- Start with exactly: erDiagram
+- Never use flowchart, graph, or subgraph blocks
+- This is a RELATIONAL DATA MODEL (tables, columns, PKs, FKs) — NEVER infrastructure architecture
+- Be comprehensive — include auth, core domain entities, join tables, billing if relevant, and audit timestamps
+- Target 12–25 entities for a real product system
+- Every relationship MUST appear as a line AND as an FK column on the child table
+- Use cardinality: ||--|| (1:1), ||--o{ (1:N), }o--o{ (N:M)
+- Attribute lines: <type> <name> <PK|FK|UK>
+- Prefer types: uuid, text, int, bigint, boolean, timestamptz, jsonb, numeric
+- Never stop early — emit relationships AND full attribute blocks for every entity`
+
+func schemaUserPrompt(prompt string) string {
+	return fmt.Sprintf(
+		`Design the production database schema for: %s
+
+Interpret product names (e.g. Unacademy, Uber, Stripe, Twitter, Netflix) as the real platform's data model — invent the full relational schema yourself (tables, columns, PKs, FKs, relationships). Do NOT ask for a table list. Do NOT output architecture/flowchart.
+
+Output ONLY Mermaid starting with "erDiagram". Be comprehensive — never stop early. No other text.`,
+		prompt,
+	)
+}
+
 // ── TextToDiagramStream ───────────────────────────────────────────────────
 
 // TextToDiagramStream streams Mermaid syntax to w.
+// mode: "architecture" (default flowchart) | "schema" (erDiagram)
 // Chain: Ollama → Groq → GitHub Models → OpenRouter
 // If provider is set, skips straight to that provider.
-func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, provider string, w http.ResponseWriter) error {
+func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, provider, mode string, w http.ResponseWriter) error {
+	isSchema := strings.EqualFold(strings.TrimSpace(mode), "schema")
 	systemPrompt := diagramSystemPrompt
 	userMessage := diagramUserPrompt(prompt)
+	// Ollama: empty system keeps the matching Modelfile SYSTEM (few-shots).
+	// Architecture → archly-architect; Schema → archly-schema.
+	ollamaSystem := ""
+	ollamaModel := s.cfg.OllamaModel
+	if isSchema {
+		systemPrompt = schemaSystemPrompt
+		userMessage = schemaUserPrompt(prompt)
+		ollamaModel = s.cfg.OllamaSchemaModel
+		if strings.TrimSpace(ollamaModel) == "" {
+			ollamaModel = "archly-schema"
+		}
+	}
 
 	// ── Provider pinning ─────────────────────────────────────────────────
 	switch strings.TrimSpace(strings.ToLower(provider)) {
 	case "ollama":
 		if s.cfg.OllamaBaseURL != "" {
-			log.Info().Str("user_id", userID).Str("provider", "ollama").Msg("ai: pinned to Ollama")
-			tokens, err := s.ollamaStream(ctx, userID, systemPrompt, userMessage, w)
+			log.Info().Str("user_id", userID).Str("provider", "ollama").Str("mode", mode).Str("model", ollamaModel).Msg("ai: pinned to Ollama")
+			tokens, err := s.ollamaStream(ctx, userID, ollamaSystem, userMessage, ollamaModel, w)
 			if err == nil {
-				s.publishEvent(userID, prompt, s.cfg.OllamaModel, "ollama", tokens)
+				s.publishEvent(userID, prompt, ollamaModel, "ollama", tokens)
 				return nil
 			}
 			log.Error().Err(err).Str("user_id", userID).Msg("ai: pinned Ollama failed")
@@ -157,11 +198,11 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 	// ── Auto fallback chain: Ollama → Groq → GitHub Models → OpenRouter ──
 	if s.cfg.OllamaBaseURL != "" {
 		log.Info().Str("user_id", userID).Str("provider", "ollama").
-			Str("model", s.cfg.OllamaModel).Str("prompt_preview", truncate(prompt, 120)).
+			Str("model", ollamaModel).Str("mode", mode).Str("prompt_preview", truncate(prompt, 120)).
 			Msg("ai: trying Ollama")
-		tokens, err := s.ollamaStream(ctx, userID, systemPrompt, userMessage, w)
+		tokens, err := s.ollamaStream(ctx, userID, ollamaSystem, userMessage, ollamaModel, w)
 		if err == nil {
-			s.publishEvent(userID, prompt, s.cfg.OllamaModel, "ollama", tokens)
+			s.publishEvent(userID, prompt, ollamaModel, "ollama", tokens)
 			return nil
 		}
 		log.Warn().Err(err).Str("user_id", userID).Msg("ai: Ollama failed — falling back to Groq")
@@ -336,11 +377,15 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 
 // ── ollamaStream ──────────────────────────────────────────────────────────
 
-// ollamaStream uses the archly-architect Modelfile SYSTEM (do not override it).
-func (s *AIService) ollamaStream(ctx context.Context, userID, system, user string, w http.ResponseWriter) (int, error) {
+// ollamaStream calls a local Ollama model.
+// Empty system → keep Modelfile SYSTEM (few-shots).
+// Pass archly-architect for architecture, archly-schema for ERD.
+func (s *AIService) ollamaStream(ctx context.Context, userID, system, user, model string, w http.ResponseWriter) (int, error) {
 	url := strings.TrimRight(s.cfg.OllamaBaseURL, "/") + "/v1/chat/completions"
-	_ = system // Modelfile owns system instructions + few-shot examples
-	return s.openAICompatStream(ctx, userID, url, "", s.cfg.OllamaModel, "ollama", "", user, w)
+	if strings.TrimSpace(model) == "" {
+		model = s.cfg.OllamaModel
+	}
+	return s.openAICompatStream(ctx, userID, url, "", model, "ollama", system, user, w)
 }
 
 // ── DiagramToCode ─────────────────────────────────────────────────────────

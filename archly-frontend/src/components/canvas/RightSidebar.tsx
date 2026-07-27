@@ -4,19 +4,23 @@ import type { CSSProperties, ReactNode } from "react";
 import PropertiesPanel from "@/components/canvas/PropertiesPanel";
 import AiStudioDock, { type AiDockTab } from "@/components/ai/AiStudioDock";
 import ChaosPanel from "@/components/simulation/ChaosPanel";
+import SchemaAiPanel from "@/components/schema/SchemaAiPanel";
+import SchemaPropertiesPanel from "@/components/schema/SchemaPropertiesPanel";
 import type { CanvasKind } from "@/lib/ai/diagram-snapshot";
 import type { AiProvider } from "@/lib/ai/providers";
+import type { StudioMode } from "@/components/studio/StudioModeBar";
 
 export type RightSidebarTab = "ai" | "config" | "chaos";
 
 interface Props {
   tab: RightSidebarTab;
   onTabChange: (tab: RightSidebarTab) => void;
-  /** design → AI|Config ; simulate → Chaos|Config */
-  mode: "design" | "simulate" | "export";
+  mode: StudioMode;
   activeCanvas: "canvas" | "flow";
   canvasKind: CanvasKind;
   onPreferFlow?: () => void;
+  /** Jump to Schema studio when AI generates an ERD */
+  onPreferSchema?: () => void;
   aiSubTab: AiDockTab;
   onAiSubTabChange: (tab: AiDockTab) => void;
   initialPrompt?: string | null;
@@ -24,6 +28,16 @@ interface Props {
   autoStart?: boolean;
   onAiSeedClear?: () => void;
   chaosCount?: number;
+  /** Schema-mode AI seed */
+  schemaSeed?: {
+    prompt: string;
+    provider: AiProvider;
+    autoStart: boolean;
+    nonce?: number;
+  } | null;
+  onSchemaSeedClear?: () => void;
+  /** Schema → Architecture bridge */
+  onArchitectureForThis?: (prompt: string, provider: AiProvider) => void;
 }
 
 export default function RightSidebar({
@@ -33,6 +47,7 @@ export default function RightSidebar({
   activeCanvas,
   canvasKind,
   onPreferFlow,
+  onPreferSchema,
   aiSubTab,
   onAiSubTabChange,
   initialPrompt,
@@ -40,17 +55,25 @@ export default function RightSidebar({
   autoStart,
   onAiSeedClear,
   chaosCount = 0,
+  schemaSeed,
+  onSchemaSeedClear,
+  onArchitectureForThis,
 }: Props) {
   const tabs =
-    mode === "simulate"
+    mode === "schema"
       ? ([
-          { id: "chaos" as const, label: chaosCount > 0 ? `Chaos · ${chaosCount}` : "Chaos" },
-          { id: "config" as const, label: "Config" },
-        ] as const)
-      : ([
           { id: "ai" as const, label: "AI" },
-          { id: "config" as const, label: "Config" },
-        ] as const);
+          { id: "config" as const, label: "Table" },
+        ] as const)
+      : mode === "simulate"
+        ? ([
+            { id: "chaos" as const, label: chaosCount > 0 ? `Chaos · ${chaosCount}` : "Chaos" },
+            { id: "config" as const, label: "Config" },
+          ] as const)
+        : ([
+            { id: "ai" as const, label: "AI" },
+            { id: "config" as const, label: "Config" },
+          ] as const);
 
   return (
     <aside
@@ -85,7 +108,20 @@ export default function RightSidebar({
       </div>
 
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
-        {tab === "chaos" ? (
+        {mode === "schema" ? (
+          tab === "config" ? (
+            <SchemaPropertiesPanel />
+          ) : (
+            <SchemaAiPanel
+              key={schemaSeed?.nonce ?? "schema-ai"}
+              initialPrompt={schemaSeed?.prompt ?? null}
+              initialProvider={schemaSeed?.provider ?? null}
+              autoStart={schemaSeed?.autoStart ?? false}
+              onSeedConsumed={onSchemaSeedClear}
+              onArchitectureForThis={onArchitectureForThis}
+            />
+          )
+        ) : tab === "chaos" ? (
           <ChaosPanel layout="dock" isOpen />
         ) : tab === "ai" ? (
           <AiStudioDock
@@ -96,6 +132,7 @@ export default function RightSidebar({
             onTabChange={onAiSubTabChange}
             canvas={canvasKind}
             onPreferFlow={onPreferFlow}
+            onPreferSchema={onPreferSchema}
             initialPrompt={initialPrompt}
             initialProvider={initialProvider}
             autoStart={autoStart}

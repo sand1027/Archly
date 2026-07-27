@@ -3,13 +3,17 @@
 import { useState, type CSSProperties } from "react";
 import { useFlowStore } from "@/store/flow.store";
 import { useCanvasStore } from "@/store/canvas.store";
+import { useSchemaStore } from "@/store/schema.store";
 import { getExcalidrawAPI } from "@/lib/excalidraw-api";
+import { schemaToMermaid, schemaToSql } from "@/lib/schema/schema-to-sql";
 import type { DesignKind } from "@/types";
+
+type ExportKind = DesignKind | "schema";
 
 interface ExportMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  kind: DesignKind;
+  kind: ExportKind;
 }
 
 function downloadText(filename: string, text: string, mime = "text/plain") {
@@ -94,6 +98,8 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
   const flowNodes = useFlowStore((s) => s.nodes);
   const flowEdges = useFlowStore((s) => s.edges);
   const canvasElements = useCanvasStore((s) => s.elements);
+  const schemaNodes = useSchemaStore((s) => s.nodes);
+  const schemaEdges = useSchemaStore((s) => s.edges);
 
   if (!isOpen) return null;
 
@@ -104,7 +110,9 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
 
   const exportMermaid = () => {
     let text: string;
-    if (kind === "flow") {
+    if (kind === "schema") {
+      text = schemaToMermaid(schemaNodes, schemaEdges);
+    } else if (kind === "flow") {
       text = serializeFlowToMermaid(flowNodes, flowEdges);
     } else {
       const api = getExcalidrawAPI();
@@ -116,9 +124,15 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
     flash("Downloaded Mermaid (.mmd)");
   };
 
+  const exportSql = () => {
+    const text = schemaToSql(schemaNodes, schemaEdges);
+    downloadText("archly-schema.sql", text, "text/sql");
+    flash("Downloaded SQL (.sql)");
+  };
+
   const exportPng = async () => {
     try {
-      if (kind === "flow") {
+      if (kind === "flow" || kind === "schema") {
         const viewport =
           document.querySelector(".react-flow__viewport") as HTMLElement | null;
         const canvas = document.querySelector(
@@ -243,7 +257,7 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
       >
         <div style={header}>
           <h2 id="export-menu-title" style={titleStyle}>
-            Export {kind === "flow" ? "Flow" : "Canvas"}
+            Export {kind === "schema" ? "Schema" : kind === "flow" ? "Flow" : "Canvas"}
           </h2>
           <button type="button" onClick={onClose} aria-label="Close" style={closeBtn}>
             ✕
@@ -252,15 +266,26 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
 
         <div style={{ padding: "8px 16px 16px", display: "flex", flexDirection: "column", gap: 8 }}>
           <ExportBtn
-            label="Export Mermaid"
-            desc="Download flowchart as .mmd"
+            label={kind === "schema" ? "Export erDiagram" : "Export Mermaid"}
+            desc={
+              kind === "schema"
+                ? "Download Mermaid ERD as .mmd"
+                : "Download flowchart as .mmd"
+            }
             onClick={exportMermaid}
           />
+          {kind === "schema" && (
+            <ExportBtn
+              label="Export SQL"
+              desc="CREATE TABLE + FK constraints (.sql)"
+              onClick={exportSql}
+            />
+          )}
           <ExportBtn
             label="Export PNG"
             desc={
-              kind === "flow"
-                ? "Capture Flow viewport (falls back to Mermaid)"
+              kind === "flow" || kind === "schema"
+                ? "Capture viewport (falls back to Mermaid)"
                 : "Export via Excalidraw API"
             }
             onClick={() => void exportPng()}

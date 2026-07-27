@@ -131,7 +131,7 @@ export type InterviewStatus = "idle" | "active" | "paused" | "ended";
 
 // ─── Saved sessions / design kinds ─────────────────────────────────────────
 
-export type DesignKind = "canvas" | "flow";
+export type DesignKind = "canvas" | "flow" | "schema";
 
 // ─── Community ────────────────────────────────────────────────────────────
 

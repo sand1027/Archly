@@ -39,9 +39,13 @@ import BottleneckReport from "@/components/simulation/BottleneckReport";
 import StudioModeBar, { type StudioMode } from "@/components/studio/StudioModeBar";
 import OnboardingTour from "@/components/studio/OnboardingTour";
 import FlowEmptyHero from "@/components/studio/FlowEmptyHero";
+import SchemaCanvas from "@/components/schema/SchemaCanvas";
+import SchemaPalette from "@/components/schema/SchemaPalette";
+import SchemaEmptyHero from "@/components/schema/SchemaEmptyHero";
 import RightSidebar, { type RightSidebarTab } from "@/components/canvas/RightSidebar";
 import type { AiDockTab } from "@/components/ai/AiStudioDock";
 import CommandPalette, { type CommandItem } from "@/components/ui/CommandPalette";
+import { useSchemaStore } from "@/store/schema.store";
 
 import { useCanvasStore } from "@/store/canvas.store";
 import { useSimulationStore } from "@/store/simulation.store";
@@ -106,6 +110,12 @@ export default function CanvasPage() {
     provider: AiProvider;
     autoStart: boolean;
   } | null>(null);
+  const [schemaSeed, setSchemaSeed] = useState<{
+    prompt: string;
+    provider: AiProvider;
+    autoStart: boolean;
+    nonce: number;
+  } | null>(null);
 
   // Clear the other tab's selection synchronously when switching
   const handleTabSwitch = useCallback((tab: CanvasTab) => {
@@ -122,6 +132,12 @@ export default function CanvasPage() {
 
   const handleClearActive = useCallback(() => {
     setClearConfirmOpen(false);
+
+    if (studioMode === "schema") {
+      useSchemaStore.getState().reset();
+      setClearConfirmOpen(false);
+      return;
+    }
 
     if (activeTab === "flow") {
       useFlowStore.getState().reset();
@@ -148,7 +164,7 @@ export default function CanvasPage() {
     setCurrentSession((s) =>
       s && s.kind === (activeTab === "flow" ? "flow" : "canvas") ? null : s
     );
-  }, [activeTab]);
+  }, [activeTab, studioMode]);
 
   // ── Panel / modal states ──────────────────────────────────────────────
   const [mermaidOpen, setMermaidOpen] = useState(false);
@@ -177,6 +193,9 @@ export default function CanvasPage() {
     if (mode === "simulate") {
       handleTabSwitch("flow");
       setRightTab("chaos");
+    } else if (mode === "schema") {
+      useSimulationStore.getState().stop();
+      setRightTab("ai");
     } else {
       useSimulationStore.getState().stop();
       if (mode === "design") setRightTab("ai");
@@ -194,6 +213,7 @@ export default function CanvasPage() {
   // Store subscriptions — ONLY rarely-changing values
   const activeInjections = useSimulationStore((s) => s.activeInjections);
   const flowNodeCount = useFlowStore((s) => s.nodes.length);
+  const schemaTableCount = useSchemaStore((s) => s.nodes.length);
   const markClean        = useCanvasStore((s) => s.markClean);
 
   // ── Collab ────────────────────────────────────────────────────────────
@@ -606,6 +626,21 @@ export default function CanvasPage() {
     setAiSubTab("generate");
   }, []);
 
+  const openSchemaGenerate = useCallback((prompt?: string, provider?: AiProvider) => {
+    if (prompt) {
+      setSchemaSeed({
+        prompt,
+        provider: provider ?? "groq",
+        autoStart: true,
+        nonce: Date.now(),
+      });
+    } else {
+      setSchemaSeed(null);
+    }
+    setStudioMode("schema");
+    setRightTab("ai");
+  }, []);
+
   const commands: CommandItem[] = useMemo(
     () => [
       {
@@ -661,11 +696,25 @@ export default function CanvasPage() {
         run: () => handleStudioMode("design"),
       },
       {
+        id: "mode-schema",
+        label: "Switch to Schema",
+        group: "Mode",
+        keywords: ["database", "erd", "tables", "sql"],
+        run: () => handleStudioMode("schema"),
+      },
+      {
         id: "mode-simulate",
         label: "Switch to Simulate",
         group: "Mode",
         keywords: ["chaos", "traffic"],
         run: () => handleStudioMode("simulate"),
+      },
+      {
+        id: "schema-ai",
+        label: "Generate database schema",
+        group: "AI",
+        keywords: ["erd", "tables"],
+        run: () => openSchemaGenerate(),
       },
       {
         id: "mode-export",
@@ -722,7 +771,7 @@ export default function CanvasPage() {
         run: () => setShortcutsOpen(true),
       },
     ],
-    [handleSave, handleSaveAs, handleShare, handleStudioMode, handleTabSwitch, openAiGenerate, requestClearActive]
+    [handleSave, handleSaveAs, handleShare, handleStudioMode, handleTabSwitch, openAiGenerate, openSchemaGenerate, requestClearActive]
   );
 
   return (
@@ -772,12 +821,26 @@ export default function CanvasPage() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        {/* Left: component palette — Design mode */}
+        {/* Left palette */}
         {studioMode === "design" && <ComponentPalette />}
+        {studioMode === "schema" && (
+          <SchemaPalette onOpenAi={(prompt) => openSchemaGenerate(prompt)} />
+        )}
 
         {/* Center: active canvas */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
 
+          {studioMode === "schema" ? (
+            <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column" }}>
+              <SchemaCanvas />
+              <SchemaEmptyHero
+                visible={schemaTableCount === 0}
+                onGenerate={(prompt, provider) => openSchemaGenerate(prompt, provider)}
+                onOpenAi={() => openSchemaGenerate()}
+              />
+            </div>
+          ) : (
+            <>
           {/* ── Excalidraw (Freehand) tab ── */}
           <div style={{
             position: "absolute", inset: 0,
@@ -805,6 +868,7 @@ export default function CanvasPage() {
                 visible={flowNodeCount === 0}
                 onGenerate={(prompt, provider) => openAiGenerate(prompt, provider)}
                 onOpenAi={() => openAiGenerate()}
+                onOpenSchema={() => openSchemaGenerate()}
               />
             )}
             {studioMode === "simulate" && (
@@ -814,6 +878,8 @@ export default function CanvasPage() {
               </>
             )}
           </div>
+            </>
+          )}
 
           {/* Shared overlays (both tabs) */}
           <GuidePanel
@@ -834,8 +900,8 @@ export default function CanvasPage() {
           />
         </div>
 
-        {/* Right: AI + Config / Chaos + Config */}
-        {(studioMode === "design" || studioMode === "simulate") && (
+        {/* Right: AI + Config / Chaos + Config / Schema AI */}
+        {(studioMode === "design" || studioMode === "simulate" || studioMode === "schema") && (
           <RightSidebar
             tab={
               studioMode === "simulate"
@@ -851,6 +917,10 @@ export default function CanvasPage() {
             activeCanvas={activeTab}
             canvasKind={activeTab === "flow" ? "flow" : "excalidraw"}
             onPreferFlow={() => handleTabSwitch("flow")}
+            onPreferSchema={() => {
+              setStudioMode("schema");
+              setRightTab("ai");
+            }}
             aiSubTab={aiSubTab}
             onAiSubTabChange={setAiSubTab}
             initialPrompt={aiSeed?.prompt ?? null}
@@ -858,6 +928,9 @@ export default function CanvasPage() {
             autoStart={aiSeed?.autoStart ?? false}
             onAiSeedClear={() => setAiSeed(null)}
             chaosCount={activeInjections.length}
+            schemaSeed={schemaSeed}
+            onSchemaSeedClear={() => setSchemaSeed(null)}
+            onArchitectureForThis={(prompt, provider) => openAiGenerate(prompt, provider)}
           />
         )}
       </div>
@@ -875,8 +948,16 @@ export default function CanvasPage() {
       <MermaidEditor isOpen={mermaidOpen} onClose={() => setMermaidOpen(false)} activeTab={activeTab} />
       <ConfirmModal
         isOpen={clearConfirmOpen}
-        title={`Clear ${activeTab === "flow" ? "Flow" : "Canvas"}?`}
-        message={`This removes all nodes and connections from the ${activeTab === "flow" ? "Flow diagram" : "Canvas"}. Chaos injections will also be cleared. This can’t be undone.`}
+        title={
+          studioMode === "schema"
+            ? "Clear Schema?"
+            : `Clear ${activeTab === "flow" ? "Flow" : "Canvas"}?`
+        }
+        message={
+          studioMode === "schema"
+            ? "This removes all tables and relationships from the schema. This can’t be undone."
+            : `This removes all nodes and connections from the ${activeTab === "flow" ? "Flow diagram" : "Canvas"}. Chaos injections will also be cleared. This can’t be undone.`
+        }
         confirmLabel="Clear everything"
         cancelLabel="Cancel"
         danger
@@ -912,9 +993,21 @@ export default function CanvasPage() {
           const draft = readLocalDraft();
           setDraftPrompt(false);
           if (!draft) return;
-          handleTabSwitch(draft.kind);
+          if (draft.kind === "schema") {
+            setStudioMode("schema");
+          } else {
+            handleTabSwitch(draft.kind === "flow" ? "flow" : "canvas");
+          }
           setTimeout(() => {
-            hydrateSnapshot(draft.kind, draft.elements, draft.app_state);
+            if (draft.kind === "schema") {
+              const els = draft.elements as { nodes?: unknown[]; edges?: unknown[] };
+              useSchemaStore.getState().setGraph(
+                (els?.nodes as never[]) ?? [],
+                (els?.edges as never[]) ?? []
+              );
+            } else {
+              hydrateSnapshot(draft.kind, draft.elements, draft.app_state);
+            }
             if (draft.sessionId) {
               setCurrentSession({
                 id: draft.sessionId,
@@ -944,7 +1037,7 @@ export default function CanvasPage() {
       <ExportMenu
         isOpen={exportOpen}
         onClose={() => setExportOpen(false)}
-        kind={activeTab === "flow" ? "flow" : "canvas"}
+        kind={studioMode === "schema" ? "schema" : activeTab === "flow" ? "flow" : "canvas"}
       />
       <ShortcutsModal isOpen={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <BottleneckReport isOpen={bottleneckOpen} onClose={() => setBottleneckOpen(false)} />

@@ -7,17 +7,37 @@ import {
   storeAiProvider,
   type AiProvider,
 } from "@/lib/ai/providers";
-import { STUDIO_EXAMPLES } from "@/components/studio/AiPromptHero";
+
+export const SCHEMA_EXAMPLES = [
+  {
+    id: "unacademy",
+    label: "Unacademy",
+    prompt: "Design Unacademy production database schema",
+  },
+  {
+    id: "stripe",
+    label: "Stripe",
+    prompt: "Design Stripe-scale payments database schema",
+  },
+  {
+    id: "uber",
+    label: "Uber",
+    prompt: "Design Uber ride-sharing database schema",
+  },
+  {
+    id: "saas",
+    label: "SaaS",
+    prompt: "Design multi-tenant SaaS database schema",
+  },
+] as const;
 
 interface Props {
   visible: boolean;
   onGenerate: (prompt: string, provider: AiProvider) => void;
   onOpenAi: () => void;
-  onOpenSchema?: () => void;
 }
 
-/** Centered empty-state for Flow — chips + one generate CTA. */
-export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSchema }: Props) {
+export default function SchemaEmptyHero({ visible, onGenerate, onOpenAi }: Props) {
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<AiProvider>("groq");
 
@@ -35,7 +55,6 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
 
   return (
     <div
-      className="flow-empty-hero"
       style={{
         position: "absolute",
         inset: 0,
@@ -51,10 +70,9 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
     >
       <div
         style={{
-          width: "min(520px, 100%)",
+          width: "min(540px, 100%)",
           display: "flex",
           flexDirection: "column",
-          alignItems: "stretch",
           gap: 14,
           pointerEvents: "auto",
         }}
@@ -63,21 +81,21 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
           <div
             style={{
               display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
               width: 44,
               height: 44,
               borderRadius: 12,
               marginBottom: 12,
+              alignItems: "center",
+              justifyContent: "center",
               background: "var(--pd-surface)",
               border: "1px solid var(--pd-border)",
               boxShadow: "var(--pd-shadow-sm)",
               color: "var(--pd-brand)",
-              fontSize: 18,
+              fontSize: 16,
               fontWeight: 800,
             }}
           >
-            ⌁
+            DB
           </div>
           <h2
             style={{
@@ -88,17 +106,10 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
               color: "var(--pd-text)",
             }}
           >
-            Design your architecture
+            Design your database schema
           </h2>
-          <p
-            style={{
-              margin: 0,
-              fontSize: 13,
-              color: "var(--pd-text-muted)",
-              lineHeight: 1.45,
-            }}
-          >
-            Drag from the left, or generate a full system with AI
+          <p style={{ margin: 0, fontSize: 13, color: "var(--pd-text-muted)", lineHeight: 1.45 }}>
+            AI builds tables, columns, and relationships as an ERD
           </p>
         </div>
 
@@ -120,7 +131,7 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
             onKeyDown={(e) => {
               if (e.key === "Enter") submit(prompt);
             }}
-            placeholder="e.g. Design Unacademy production architecture…"
+            placeholder="e.g. Design Unacademy production database schema…"
             className="pd-input"
             style={{
               flex: 1,
@@ -159,15 +170,8 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
           </button>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            justifyContent: "center",
-          }}
-        >
-          {STUDIO_EXAMPLES.map((ex) => (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+          {SCHEMA_EXAMPLES.map((ex) => (
             <button
               key={ex.id}
               type="button"
@@ -189,41 +193,22 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
           ))}
         </div>
 
-        <div style={{ display: "flex", gap: 16, alignSelf: "center", flexWrap: "wrap", justifyContent: "center" }}>
-          <button
-            type="button"
-            onClick={onOpenAi}
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--pd-text-subtle)",
-              fontSize: 12,
-              cursor: "pointer",
-              textDecoration: "underline",
-              textUnderlineOffset: 3,
-            }}
-          >
-            Open full AI panel
-          </button>
-          {onOpenSchema && (
-            <button
-              type="button"
-              onClick={onOpenSchema}
-              style={{
-                background: "none",
-                border: "none",
-                color: "var(--pd-brand)",
-                fontSize: 12,
-                fontWeight: 600,
-                cursor: "pointer",
-                textDecoration: "underline",
-                textUnderlineOffset: 3,
-              }}
-            >
-              Need a database schema? → Schema AI
-            </button>
-          )}
-        </div>
+        <button
+          type="button"
+          onClick={onOpenAi}
+          style={{
+            alignSelf: "center",
+            background: "none",
+            border: "none",
+            color: "var(--pd-text-subtle)",
+            fontSize: 12,
+            cursor: "pointer",
+            textDecoration: "underline",
+            textUnderlineOffset: 3,
+          }}
+        >
+          Open full AI panel
+        </button>
       </div>
     </div>
   );

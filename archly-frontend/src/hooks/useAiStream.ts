@@ -21,7 +21,7 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const stream = useCallback((prompt: string, provider?: string) => {
+  const stream = useCallback((prompt: string, provider?: string, mode?: "architecture" | "schema") => {
     // Cancel any in-flight request before starting a new one
     abortRef.current?.abort();
     setResponse("");
@@ -29,10 +29,11 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
     setIsStreaming(true);
 
     let accumulated = "";
+    const diagramMode = mode === "schema" ? "schema" : "architecture";
 
     const controller = apiStream(
       aiApi.textToDiagramStreamPath,
-      { prompt, provider: provider ?? "" },
+      { prompt, provider: provider ?? "", mode: diagramMode },
       (chunk) => {
         accumulated += chunk;
         setResponse(accumulated);
@@ -45,7 +46,10 @@ export function useAiStream(options: UseAiStreamOptions = {}) {
       (err) => {
         setIsStreaming(false);
         // Stream often dies mid-Ollama run; if we already have Mermaid, still convert it.
-        const looksLikeMermaid = /flowchart\s/i.test(accumulated) || /graph\s/i.test(accumulated);
+        const looksLikeMermaid =
+          /flowchart\s/i.test(accumulated) ||
+          /graph\s/i.test(accumulated) ||
+          /erDiagram/i.test(accumulated);
         if (looksLikeMermaid && accumulated.trim().length > 40) {
           optionsRef.current.onDone?.(accumulated);
           setError(new Error("Stream ended early — used partial diagram. Re-run if nodes look incomplete."));

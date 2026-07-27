@@ -26,6 +26,7 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 	var body struct {
 		Prompt   string `json:"prompt"`
 		Provider string `json:"provider"` // "ollama" | "groq" | "github" | "openrouter" | "" (auto)
+		Mode     string `json:"mode"`     // "architecture" (default) | "schema"
 	}
 	if !Decode(w, r, &body) {
 		return
@@ -42,14 +43,20 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 		uid = userID.String()
 	}
 
+	mode := strings.TrimSpace(strings.ToLower(body.Mode))
+	if mode == "" {
+		mode = "architecture"
+	}
+
 	log.Info().
 		Str("user_id", uid).
 		Str("prompt", body.Prompt).
 		Str("provider_hint", body.Provider).
+		Str("mode", mode).
 		Str("remote_addr", r.RemoteAddr).
 		Msg("handler: TextToDiagramStream request received")
 
-	if err := h.svc.TextToDiagramStream(r.Context(), body.Prompt, uid, body.Provider, w); err != nil {
+	if err := h.svc.TextToDiagramStream(r.Context(), body.Prompt, uid, body.Provider, mode, w); err != nil {
 		if errors.Is(err, services.ErrAIUnavailable) {
 			log.Warn().Str("user_id", uid).Msg("handler: AI unavailable — no provider configured")
 			Error(w, http.StatusServiceUnavailable, "AI_UNAVAILABLE",

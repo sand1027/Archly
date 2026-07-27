@@ -177,6 +177,7 @@ services:
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-inclusionai/ling-3.0-flash:free}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-archly-architect}
+      OLLAMA_SCHEMA_MODEL: ${OLLAMA_SCHEMA_MODEL:-archly-schema}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PORT: 8080

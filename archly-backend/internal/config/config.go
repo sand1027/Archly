@@ -44,8 +44,9 @@ type Config struct {
 	OpenRouterModel  string
 
 	// AI — Ollama (local, highest priority when set)
-	OllamaBaseURL string
-	OllamaModel   string
+	OllamaBaseURL     string
+	OllamaModel       string // architecture (archly-architect Modelfile)
+	OllamaSchemaModel string // schema / ERD (archly-schema Modelfile)
 
 	// Payments
 	StripeSecretKey      string
@@ -73,6 +74,7 @@ func Load() (*Config, error) {
 		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
 		OllamaBaseURL:        getEnv("OLLAMA_BASE_URL", ""),
 		OllamaModel:          getEnv("OLLAMA_MODEL", "archly-architect"),
+		OllamaSchemaModel:    getEnv("OLLAMA_SCHEMA_MODEL", "archly-schema"),
 		StripeSecretKey:       getEnv("STRIPE_SECRET_KEY", ""),
 		StripeWebhookSecret:   getEnv("STRIPE_WEBHOOK_SECRET", ""),
 		PayPalClientID:        getEnv("PAYPAL_CLIENT_ID", ""),

@@ -11,6 +11,13 @@ import { useCanvasChat } from "@/hooks/useCanvasChat";
 import { useFlowStore } from "@/store/flow.store";
 import { useAuth } from "@/providers/auth-provider";
 import { convertMermaidToFlow } from "@/lib/mermaid-to-flow";
+import { convertErDiagramToSchema, extractErDiagram } from "@/lib/schema/er-to-schema";
+import { looksLikeSchemaIncremental } from "@/lib/schema/schema-edges";
+import {
+  architectureForThisSchemaPrompt,
+  schemaForThisArchitecturePrompt,
+} from "@/lib/schema/cross-prompts";
+import { useSchemaStore } from "@/store/schema.store";
 import ModelSelect from "@/components/ai/ModelSelect";
 import ArchitectureLoading from "@/components/ai/ArchitectureLoading";
 import {
@@ -22,6 +29,7 @@ import { toast } from "@/store/toast.store";
 import type { CanvasKind } from "@/lib/ai/diagram-snapshot";
 
 export type AiDockTab = "generate" | "chat";
+export type AiDiagramMode = "architecture" | "schema";
 
 interface Props {
   isOpen: boolean;
@@ -30,19 +38,30 @@ interface Props {
   onTabChange: (tab: AiDockTab) => void;
   canvas: CanvasKind;
   onPreferFlow?: () => void;
+  /** Switch studio into Schema mode when generating ERDs */
+  onPreferSchema?: () => void;
   initialPrompt?: string | null;
   initialProvider?: AiProvider | null;
   autoStart?: boolean;
+  /** Prefer schema generate mode when opening (e.g. from Schema CTA) */
+  initialDiagramMode?: AiDiagramMode;
   /** Dock floats at bottom; sidebar fills the right panel */
   layout?: "dock" | "sidebar";
   onSeedConsumed?: () => void;
 }
 
-const GEN_PROMPTS = [
+const GEN_PROMPTS_ARCH = [
   "Design a Twitter-scale feed",
   "Design a URL shortener",
   "Design Uber ride-sharing",
   "Design Netflix streaming",
+];
+
+const GEN_PROMPTS_SCHEMA = [
+  "Design Unacademy production database schema",
+  "Design Stripe-scale payments database schema",
+  "Design Uber ride-sharing database schema",
+  "Design multi-tenant SaaS database schema",
 ];
 
 const CHAT_SUGGESTIONS = [
@@ -67,9 +86,11 @@ export default function AiStudioDock({
   onTabChange,
   canvas,
   onPreferFlow,
+  onPreferSchema,
   initialPrompt,
   initialProvider,
   autoStart,
+  initialDiagramMode = "architecture",
   layout = "dock",
   onSeedConsumed,
 }: Props) {
@@ -167,7 +188,7 @@ export default function AiStudioDock({
           <>
             <span style={{ flex: 1, fontSize: 11, color: "var(--pd-text-subtle)", minWidth: 0 }}>
               {tab === "generate"
-                ? "Describe a system → Mermaid on Flow"
+                ? "Architecture or Schema → canvas"
                 : "Ask, inject chaos, or add nodes"}
             </span>
             <button type="button" onClick={onClose} title="Close" style={iconBtn}>
@@ -180,8 +201,10 @@ export default function AiStudioDock({
       {tab === "generate" ? (
         <GeneratePane
           onPreferFlow={onPreferFlow}
+          onPreferSchema={onPreferSchema}
           initialPrompt={initialPrompt}
           initialProvider={initialProvider}
+          initialDiagramMode={initialDiagramMode}
           autoStart={autoStart}
           onDoneSwitchToChat={() => {
             onTabChange("chat");
@@ -200,15 +223,19 @@ export default function AiStudioDock({
 
 function GeneratePane({
   onPreferFlow,
+  onPreferSchema,
   initialPrompt,
   initialProvider,
+  initialDiagramMode = "architecture",
   autoStart,
   onDoneSwitchToChat,
   compact,
 }: {
   onPreferFlow?: () => void;
+  onPreferSchema?: () => void;
   initialPrompt?: string | null;
   initialProvider?: AiProvider | null;
+  initialDiagramMode?: AiDiagramMode;
   autoStart?: boolean;
   onDoneSwitchToChat: () => void;
   compact?: boolean;
@@ -217,8 +244,10 @@ function GeneratePane({
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [provider, setProvider] = useState<AiProvider>("groq");
+  const [diagramMode, setDiagramMode] = useState<AiDiagramMode>(initialDiagramMode);
   const { isAuthenticated } = useAuth();
   const providerRef = useRef<AiProvider>("groq");
+  const modeRef = useRef<AiDiagramMode>(initialDiagramMode);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
@@ -226,8 +255,17 @@ function GeneratePane({
   }, [provider]);
 
   useEffect(() => {
+    modeRef.current = diagramMode;
+  }, [diagramMode]);
+
+  useEffect(() => {
     queueMicrotask(() => setProvider(readStoredAiProvider()));
   }, []);
+
+  useEffect(() => {
+    setDiagramMode(initialDiagramMode);
+    modeRef.current = initialDiagramMode;
+  }, [initialDiagramMode]);
 
   useEffect(() => {
     if (initialProvider) {
@@ -239,6 +277,38 @@ function GeneratePane({
 
   const { stream, cancel, isStreaming, error } = useAiStream({
     onDone: async (fullResponse) => {
+      if (modeRef.current === "schema") {
+        setStatusMsg("Building schema…");
+        const er = extractErDiagram(fullResponse);
+        if (!er) {
+          setStatusMsg("No erDiagram returned — try Schema mode again.");
+          toast("AI did not return an erDiagram", "error");
+          return;
+        }
+        const result = convertErDiagramToSchema(er);
+        if ("error" in result) {
+          setStatusMsg(result.error);
+          toast(result.error, "error");
+          return;
+        }
+        onPreferSchema?.();
+        const existing = useSchemaStore.getState().nodes.length;
+        const merge =
+          existing > 0 && looksLikeSchemaIncremental(activePrompt ?? "");
+        useSchemaStore.getState().setGraph(result.nodes, result.edges, { merge });
+        setStatusMsg(
+          merge
+            ? `✓ Merged ${result.nodes.length} table(s)`
+            : `✓ ${result.nodes.length} tables · ${result.edges.length} relations`
+        );
+        toast(
+          merge ? "Table(s) added" : `Schema ready — ${result.nodes.length} tables`,
+          "success"
+        );
+        setTimeout(() => setStatusMsg(null), 1200);
+        return;
+      }
+
       const cleaned = sanitizeMermaid(fullResponse);
       setStatusMsg("Converting…");
       const result = await convertMermaidToFlow(cleaned);
@@ -281,8 +351,9 @@ function GeneratePane({
     if (!prompt.trim() || isStreaming) return;
     setStatusMsg(null);
     setActivePrompt(prompt.trim());
-    onPreferFlow?.();
-    stream(prompt.trim(), providerRef.current);
+    if (diagramMode === "schema") onPreferSchema?.();
+    else onPreferFlow?.();
+    stream(prompt.trim(), providerRef.current, diagramMode);
   };
 
   useEffect(() => {
@@ -294,9 +365,19 @@ function GeneratePane({
     setActivePrompt(p);
     const prov = initialProvider ?? providerRef.current;
     if (initialProvider) providerRef.current = initialProvider;
-    onPreferFlow?.();
-    stream(p, prov);
-  }, [autoStart, initialPrompt, initialProvider, isStreaming, stream, onPreferFlow]);
+    const mode = modeRef.current;
+    if (mode === "schema") onPreferSchema?.();
+    else onPreferFlow?.();
+    stream(p, prov, mode);
+  }, [
+    autoStart,
+    initialPrompt,
+    initialProvider,
+    isStreaming,
+    stream,
+    onPreferFlow,
+    onPreferSchema,
+  ]);
 
   useEffect(() => {
     if (!error) return;
@@ -305,6 +386,43 @@ function GeneratePane({
       toast("AI quota exceeded — switch provider", "error", 4500);
     }
   }, [error]);
+
+  const chips = diagramMode === "schema" ? GEN_PROMPTS_SCHEMA : GEN_PROMPTS_ARCH;
+
+  const schemaTableCount = useSchemaStore((s) => s.nodes.length);
+  const flowNodeCount = useFlowStore((s) => s.nodes.length);
+
+  const runArchitectureForThis = () => {
+    const { nodes, edges } = useSchemaStore.getState();
+    const built = architectureForThisSchemaPrompt(nodes, edges);
+    if (!built) {
+      toast("Open Schema mode and add tables first", "error");
+      return;
+    }
+    setDiagramMode("architecture");
+    modeRef.current = "architecture";
+    setPrompt(built);
+    setActivePrompt(built);
+    setStatusMsg(null);
+    onPreferFlow?.();
+    stream(built, providerRef.current, "architecture");
+  };
+
+  const runSchemaForThis = () => {
+    const { nodes, edges } = useFlowStore.getState();
+    const built = schemaForThisArchitecturePrompt(nodes, edges);
+    if (!built) {
+      toast("Add architecture nodes on Flow first", "error");
+      return;
+    }
+    setDiagramMode("schema");
+    modeRef.current = "schema";
+    setPrompt(built);
+    setActivePrompt(built);
+    setStatusMsg(null);
+    onPreferSchema?.();
+    stream(built, providerRef.current, "schema");
+  };
 
   return (
     <div
@@ -333,8 +451,82 @@ function GeneratePane({
         </div>
       )}
 
+      <div
+        style={{
+          display: "flex",
+          gap: 2,
+          padding: 2,
+          borderRadius: 8,
+          background: "var(--pd-bg-muted)",
+          alignSelf: "flex-start",
+        }}
+        role="group"
+        aria-label="AI generate mode"
+      >
+        {(
+          [
+            { id: "architecture" as const, label: "Architecture" },
+            { id: "schema" as const, label: "Schema" },
+          ] as const
+        ).map((m) => (
+          <button
+            key={m.id}
+            type="button"
+            disabled={isStreaming}
+            onClick={() => setDiagramMode(m.id)}
+            style={{
+              padding: "5px 12px",
+              borderRadius: 6,
+              border: "none",
+              background: diagramMode === m.id ? "var(--pd-surface)" : "transparent",
+              color: diagramMode === m.id ? "var(--pd-brand)" : "var(--pd-text-muted)",
+              fontSize: 12,
+              fontWeight: diagramMode === m.id ? 700 : 600,
+              cursor: isStreaming ? "not-allowed" : "pointer",
+              boxShadow: diagramMode === m.id ? "var(--pd-shadow-sm)" : "none",
+            }}
+          >
+            {m.label}
+          </button>
+        ))}
+      </div>
+
+      <p style={{ margin: 0, fontSize: 11, color: "var(--pd-text-subtle)", lineHeight: 1.4 }}>
+        {diagramMode === "schema"
+          ? "Database ERD — tables, columns, FKs. Say “Add a payments table…” to merge into an existing schema."
+          : "System architecture — services and traffic on Flow."}
+      </p>
+
+      {diagramMode === "architecture" && schemaTableCount > 0 && (
+        <button
+          type="button"
+          disabled={isStreaming}
+          onClick={runArchitectureForThis}
+          style={crossModeBtn}
+        >
+          <span>Architecture for this</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--pd-text-subtle)" }}>
+            From your schema · {schemaTableCount} tables
+          </span>
+        </button>
+      )}
+
+      {diagramMode === "schema" && flowNodeCount > 0 && (
+        <button
+          type="button"
+          disabled={isStreaming}
+          onClick={runSchemaForThis}
+          style={crossModeBtn}
+        >
+          <span>Schema for this</span>
+          <span style={{ fontSize: 11, fontWeight: 500, color: "var(--pd-text-subtle)" }}>
+            From your architecture · {flowNodeCount} nodes
+          </span>
+        </button>
+      )}
+
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-        {(compact ? GEN_PROMPTS.slice(0, 3) : GEN_PROMPTS).map((p) => (
+        {(compact ? chips.slice(0, 3) : chips).map((p) => (
           <button
             key={p}
             type="button"
@@ -359,7 +551,11 @@ function GeneratePane({
           onKeyDown={(e) => {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) handleSubmit();
           }}
-          placeholder="Describe your system… (⌘+Enter)"
+          placeholder={
+            diagramMode === "schema"
+              ? "Design DB schema… or Add a notifications table… (⌘+Enter)"
+              : "Describe your system… (⌘+Enter)"
+          }
           rows={2}
           style={{
             display: "block",
@@ -664,4 +860,20 @@ const sendBtn: CSSProperties = {
   color: "#fff",
   cursor: "pointer",
   flexShrink: 0,
+};
+
+const crossModeBtn: CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: "1px solid color-mix(in srgb, var(--pd-brand) 40%, var(--pd-border))",
+  background: "color-mix(in srgb, var(--pd-brand) 12%, var(--pd-surface))",
+  color: "var(--pd-text)",
+  fontSize: 12.5,
+  fontWeight: 700,
+  cursor: "pointer",
+  textAlign: "left",
+  display: "flex",
+  flexDirection: "column",
+  gap: 2,
 };

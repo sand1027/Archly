@@ -1,11 +1,12 @@
 "use client";
 
-export type StudioMode = "design" | "simulate" | "export";
+export type StudioMode = "design" | "simulate" | "export" | "schema";
 
 const MODES: { id: StudioMode; label: string; hint: string }[] = [
   { id: "design", label: "Design", hint: "Build architecture (Alt+D)" },
+  { id: "schema", label: "Schema", hint: "Database ERD — tables & relationships" },
   { id: "simulate", label: "Simulate", hint: "Traffic, metrics & chaos" },
-  { id: "export", label: "Export", hint: "Mermaid, PNG, infra code (Alt+E)" },
+  { id: "export", label: "Export", hint: "Mermaid, PNG, SQL, infra code (Alt+E)" },
 ];
 
 interface Props {
@@ -25,6 +26,8 @@ export default function StudioModeBar({
   onClear,
   sessionTitle,
 }: Props) {
+  const showCanvasTabs = mode !== "schema";
+
   return (
     <div
       className="studio-mode-bar"
@@ -39,7 +42,6 @@ export default function StudioModeBar({
         borderBottom: "1px solid var(--pd-border)",
       }}
     >
-      {/* Mode segmented control */}
       <div
         role="tablist"
         aria-label="Studio mode"
@@ -81,32 +83,40 @@ export default function StudioModeBar({
         })}
       </div>
 
-      <Divider />
-
-      {/* Canvas kind */}
-      <div
-        role="tablist"
-        aria-label="Canvas type"
-        style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
-      >
-        <CanvasTab
-          label="Flow"
-          title="Node-edge diagram with live simulation (Alt+2)"
-          active={canvasTab === "flow"}
-          onClick={() => onCanvasTabChange("flow")}
-        />
-        <CanvasTab
-          label="Freehand"
-          title="Excalidraw sketch canvas (Alt+1)"
-          active={canvasTab === "canvas"}
-          onClick={() => onCanvasTabChange("canvas")}
-        />
-      </div>
+      {showCanvasTabs && (
+        <>
+          <Divider />
+          <div
+            role="tablist"
+            aria-label="Canvas type"
+            style={{ display: "inline-flex", alignItems: "center", gap: 2 }}
+          >
+            <CanvasTab
+              label="Flow"
+              title="Node-edge diagram with live simulation (Alt+2)"
+              active={canvasTab === "flow"}
+              onClick={() => onCanvasTabChange("flow")}
+            />
+            <CanvasTab
+              label="Freehand"
+              title="Excalidraw sketch canvas (Alt+1)"
+              active={canvasTab === "canvas"}
+              onClick={() => onCanvasTabChange("canvas")}
+            />
+          </div>
+        </>
+      )}
 
       <button
         type="button"
         onClick={onClear}
-        title={canvasTab === "flow" ? "Clear Flow diagram" : "Clear Freehand canvas"}
+        title={
+          mode === "schema"
+            ? "Clear schema"
+            : canvasTab === "flow"
+              ? "Clear Flow diagram"
+              : "Clear Freehand canvas"
+        }
         style={{
           padding: "4px 9px",
           borderRadius: 6,
@@ -132,6 +142,12 @@ export default function StudioModeBar({
       </button>
 
       <div style={{ flex: 1, minWidth: 0 }} />
+
+      {mode === "schema" && (
+        <span style={{ fontSize: 11, fontWeight: 600, color: "var(--pd-text-subtle)" }}>
+          Database ERD
+        </span>
+      )}
 
       {sessionTitle && (
         <span

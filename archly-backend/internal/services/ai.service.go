@@ -153,10 +153,12 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 				s.publishEvent(userID, prompt, ollamaModel, "ollama", tokens)
 				return nil
 			}
-			log.Error().Err(err).Str("user_id", userID).Msg("ai: pinned Ollama failed")
-			return err
+			// Empty/failed Ollama (common when Modelfile stops fire) → try cloud providers.
+			log.Warn().Err(err).Str("user_id", userID).Str("model", ollamaModel).
+				Msg("ai: pinned Ollama failed — falling through to cloud")
+		} else {
+			log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
 		}
-		log.Warn().Str("user_id", userID).Msg("ai: ollama requested but OLLAMA_BASE_URL not set — falling through")
 	case "groq":
 		if s.cfg.GroqAPIKey != "" {
 			log.Info().Str("user_id", userID).Str("provider", "groq").Msg("ai: pinned to Groq")
@@ -315,13 +317,23 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 		return 0, fmt.Errorf("%s %d: %s", providerName, resp.StatusCode, truncate(string(body), 400))
 	}
 
-	writeSSEHeaders(w)
 	flusher, canFlush := w.(http.Flusher)
 
 	var tokens int
 	var fullOutput strings.Builder
+	sseStarted := false
+
+	startSSE := func() {
+		if sseStarted {
+			return
+		}
+		writeSSEHeaders(w)
+		sseStarted = true
+	}
 
 	scanner := bufio.NewScanner(resp.Body)
+	// Large Mermaid diagrams can produce long SSE lines.
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data: ") {
@@ -329,9 +341,11 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			if canFlush {
-				flusher.Flush()
+			if sseStarted {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				if canFlush {
+					flusher.Flush()
+				}
 			}
 			break
 		}
@@ -346,6 +360,7 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 			if text == "" {
 				continue
 			}
+			startSSE()
 			tokens++
 			fullOutput.WriteString(text)
 			writeSSELines(w, text)
@@ -365,11 +380,14 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 		Str("user_id", userID).Str("provider", providerName).Str("model", model).
 		Int("tokens", tokens).Str("output_preview", truncate(rawOut, 300)).
 		Bool("starts_with_flowchart", strings.HasPrefix(strings.TrimSpace(rawOut), "flowchart")).
+		Bool("starts_with_erdiagram", strings.HasPrefix(strings.TrimSpace(rawOut), "erDiagram")).
 		Bool("has_markdown_fence", strings.Contains(rawOut, "```")).
 		Msg("ai: stream complete")
 
-	if tokens == 0 {
-		log.Warn().Str("user_id", userID).Str("provider", providerName).Msg("ai: returned zero tokens")
+	if tokens == 0 || strings.TrimSpace(rawOut) == "" {
+		log.Warn().Str("user_id", userID).Str("provider", providerName).Str("model", model).
+			Msg("ai: returned zero tokens / empty output")
+		return 0, fmt.Errorf("%s returned empty output for model %s", providerName, model)
 	}
 
 	return tokens, nil

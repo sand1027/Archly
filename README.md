@@ -77,6 +77,28 @@ docker compose down -v
 
 ---
 
+## CLI (experimental)
+
+Headless client for generate / export / session management against the same API:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sand1027/Archly/main/archly-cli/install.sh | bash
+# or: brew install sand1027/archly/archly --HEAD
+# or: brew tap sand1027/tap && brew install archly  (after homebrew-tap repo is published)
+
+export PATH="$HOME/.local/bin:$PATH"
+export ARCHLY_API_URL=http://localhost:8080
+archly doctor
+archly login
+archly generate "Design a payments platform" -o payments.mmd
+```
+
+Or with Go: `go install github.com/sand1027/Archly/archly-cli@latest`
+
+Docs: [`archly-cli/README.md`](archly-cli/README.md) · Plan: [`cliplan.md`](cliplan.md)
+
+---
+
 ## Service Overview
 
 | Container | Port | Description |

@@ -1,7 +1,9 @@
 # Archly CLI Plan
 
 Planning doc for a first-party CLI that talks to the existing Archly API.  
-**Status:** draft · **Not implemented yet** · Iterate here before writing code.
+**Status:** Phase 1 MVP **implemented** in `archly-cli/` · Keep this doc updated as the CLI evolves.
+
+**Quick start:** [`archly-cli/README.md`](archly-cli/README.md)
 
 ---
 
@@ -95,8 +97,8 @@ Archly/
 ```yaml
 api_url: http://localhost:8080          # or https://api.example.com
 app_url: http://localhost:3000          # for `archly open`
-default_provider: groq                  # "" | ollama | groq | github | openrouter
-default_format: mermaid                 # for generate output
+default_provider: groq                  # "" | ollama | groq | github | openrouter | nvidia | …
+default_mode: architecture              # architecture | schema
 ```
 
 ### Secrets: `~/.archly/credentials` (mode `0600`)
@@ -115,6 +117,7 @@ expires_at: 2026-07-26T18:00:00Z
 | `ARCHLY_APP_URL` | Web app base (`open`) |
 | `ARCHLY_TOKEN` | Bypass stored JWT (CI) |
 | `ARCHLY_PROVIDER` | Default AI provider |
+| `ARCHLY_MODE` | Default generate mode (`architecture` \| `schema`) |
 | `ARCHLY_CONFIG` | Alternate config path |
 
 Flags always win over env over file.
@@ -165,9 +168,11 @@ archly whoami
 archly generate <prompt...>           # SSE → Mermaid on stdout
   -f, --file prompt.txt
   -o, --out design.mmd
-  -p, --provider ollama|groq|github|openrouter
-  --no-stream                         # buffer then print (if API supports; else client-buffer)
-  --json                              # { "mermaid": "...", "provider": "..." }
+  -p, --provider ollama|groq|github|openrouter|nvidia|nvidia-nemotron|nvidia-deepseek
+  --mode architecture|schema          # schema → erDiagram ERD (30–40 tables)
+  --no-stream                         # buffer then print (client-side)
+  --strict                            # exit 3 on partial diagrams
+  --json                              # { "mermaid": "...", "provider": "...", "mode": "..." }
 
 archly session list
 archly session get <id> [-o file]
@@ -314,9 +319,12 @@ Accumulate tokens; on non-2xx or `event: error`, surface the message body.
 | Method | Command / artifact |
 |--------|--------------------|
 | Dev | `cd archly-cli && go run . generate "..."` |
-| Local install | `go install ./...` from `archly-cli` |
-| Releases | GitHub Actions → `archly_{os}_{arch}.tar.gz` (darwin/linux/windows, amd64/arm64) |
-| Homebrew (later) | `brew install archlyai/tap/archly` |
+| **One-liner** | `curl -fsSL https://raw.githubusercontent.com/sand1027/Archly/main/archly-cli/install.sh \| bash` |
+| Homebrew | `brew install sand1027/archly/archly --HEAD` · after tap: `brew tap sand1027/tap && brew install archly` |
+| Go install | `go install github.com/sand1027/Archly/archly-cli@latest` |
+| Local install | `cd archly-cli && make install` |
+| Releases | Tag `v*` → GitHub Actions → `archly_{os}_{arch}.tar.gz` |
+| Homebrew (later) | `brew tap sand1027/tap && brew install archly` — **formula in `Formula/` + `homebrew-tap/`** |
 | Docker (optional) | `docker run --rm -v $PWD:/work archly/cli generate …` |
 
 Version: embed via `-ldflags "-X main.version=…"` from git tag.
@@ -329,8 +337,8 @@ Small API tweaks that make the CLI clean. Prioritize only what’s needed per ph
 
 | ID | Change | Phase | Notes |
 |----|--------|-------|-------|
-| B1 | `POST /v1/ai/mermaid-to-code` `{ mermaid, format }` | 1 | Avoid fake Excalidraw elements from CLI |
-| B2 | Design `kind: "mermaid"` or store Mermaid in `app_state` | 1 | So `session save -f x.mmd` is honest |
+| B1 | `POST /v1/ai/mermaid-to-code` `{ mermaid, format }` | 1 | **Shim shipped:** CLI sends `{"mermaid","format":"mermaid"}` as `elements` to diagram-to-code |
+| B2 | Design `kind: "mermaid"` or store Mermaid in `app_state` | 1 | **Shim shipped:** `app_state.mermaid` + `kind: flow\|schema`; `session get` reads mermaid only |
 | B3 | Document OpenAPI for AI + designs | 2 | Optional codegen for clients |
 | B4 | `GET /v1/ai/providers` — what’s configured | 2 | Powers `doctor` / `provider list` |
 | B5 | Interview API for `archly interview` | 3 | Nice-to-have |
@@ -361,22 +369,25 @@ Until B1 ships, Phase 1 `export` can call diagram-to-code with a documented shim
 
 ## 13. Phased delivery checklist
 
-### Phase 1 — MVP (target: usable in a week of focused work)
+### Phase 1 — MVP ✅ (implemented 2026-07-28)
 
-- [ ] Scaffold `archly-cli` Go module + Cobra root
-- [ ] Config + credentials store
-- [ ] `login` / `logout` / `whoami` / `doctor` / `version`
-- [ ] `generate` with SSE streaming + `-o` / `--provider`
-- [ ] Decide B1 vs shim for `export`; implement `export`
-- [ ] `session list|get|save|delete` with Mermaid storage strategy (B2)
-- [ ] README with install + 5-command quickstart
-- [ ] Update root README with “CLI (experimental)” link to this plan + cli README
+- [x] Scaffold `archly-cli` Go module + Cobra root
+- [x] Config + credentials store
+- [x] `login` / `logout` / `whoami` / `doctor` / `version`
+- [x] `generate` with SSE streaming + `-o` / `--provider` / `--mode schema`
+- [x] NVIDIA providers in `--provider` (nvidia, nvidia-nemotron, nvidia-deepseek)
+- [x] Shim for `export` (diagram-to-code with Mermaid wrapper — B1 pending)
+- [x] `session list|get|save|delete` with `app_state.mermaid` shim (B2 pending)
+- [x] README with install + quickstart
+- [x] Update root README with CLI link
+- [ ] Refresh-token auto-save on 401 (partial — login stores refresh; retry wired in client)
+- [ ] GitHub Releases binary artifacts
 
 ### Phase 2
 
 - [ ] `chat`, `share`, `community`, `open`
-- [ ] `--json` everywhere
-- [ ] Refresh-token handling
+- [x] `--json` on Phase 1 commands (generate, session, doctor, login, …)
+- [x] Refresh-token handling (client retries once on 401)
 - [ ] B3 / B4 if useful
 
 ### Phase 3
@@ -422,28 +433,27 @@ archly open -f payments.mmd
 
 ---
 
-## 15. Open decisions (resolve before coding)
+## 15. Open decisions (resolved)
 
-| # | Question | Options | Lean |
-|---|----------|---------|------|
-| D1 | Repo layout | `archly-cli/` vs `cmd/archly` inside backend | **`archly-cli/`** separate module |
-| D2 | Export without B1 | Shim elements vs wait for B1 | Prefer **B1 first** (small handler) |
-| D3 | Session save format | `kind: mermaid` vs stash in flow `app_state` | Prefer **`kind: "mermaid"`** if cheap |
-| D4 | Binary name | `archly` vs `archlyctl` | **`archly`** |
-| D5 | Color / TUI | plain vs lipgloss | Plain first; color optional later |
-
-Update this table when decisions are made.
+| # | Question | Decision | Date |
+|---|----------|----------|------|
+| D1 | Repo layout | **`archly-cli/`** separate Go module | 2026-07-28 |
+| D2 | Export without B1 | **Shim** — Mermaid JSON wrapper to diagram-to-code; B1 still preferred | 2026-07-28 |
+| D3 | Session save format | **`app_state.mermaid`** + `kind: flow\|schema` until B2 | 2026-07-28 |
+| D4 | Binary name | **`archly`** | 2026-07-28 |
+| D5 | Color / TUI | Plain stdout/stderr first | 2026-07-28 |
 
 ---
 
-## 16. Next step
+## 16. Implementation log
 
-When ready to implement:
+| Date | Change |
+|------|--------|
+| 2026-07-28 | Homebrew: `Formula/archly.rb`, `homebrew-tap/` for `sand1027/tap`, `bump-brew-formula.sh` |
+| 2026-07-28 | Plan updated: NVIDIA providers, schema mode, B1/B2 shim notes |
 
-1. Lock D1–D5 above.
-2. Implement Phase 1 checklist in order (scaffold → auth → generate → export/session).
-3. Keep this file as the living plan; move completed items to checked and note API PRs under §10.
+**Next:** Phase 2 (`chat`, `share`, `community`, `open`); backend B1 for clean export; GitHub Releases.
 
 ---
 
-*Last updated: 2026-07-26*
+*Last updated: 2026-07-28*

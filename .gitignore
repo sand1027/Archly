@@ -43,6 +43,9 @@ archly-frontend/*.tsbuildinfo
 archly-frontend/next-env.d.ts
 archly-frontend/.vercel
 
+# CLI local build
+archly-cli/archly
+
 # ─── Docker ───────────────────────────────────────────────────
 docker-compose.override.yml
 

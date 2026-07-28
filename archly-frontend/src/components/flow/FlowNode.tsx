@@ -1,11 +1,21 @@
 "use client";
 
-import { memo, useState } from "react";
+import { memo, useMemo, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { getChaosType } from "@/lib/simulation/chaos";
 import { useSimulationStore } from "@/store/simulation.store";
 import { useFlowStore, type FlowNodeData } from "@/store/flow.store";
 import type { FlowNode } from "@/store/flow.store";
+import { useStoryStore } from "@/store/story.store";
+import { useArchitectureStudioStore } from "@/store/architecture-studio.store";
+import { useCanvasStore } from "@/store/canvas.store";
+import {
+  classifyHop,
+  HOP_ROLE_COLORS,
+  type HopRole,
+} from "@/lib/architecture/story-path";
+import { computeBlastRadius } from "@/lib/architecture/blast-radius";
+import { estimateNodeCost } from "@/lib/architecture/cost-estimates";
 
 /**
  * Custom React Flow node for system design components.
@@ -22,7 +32,7 @@ import type { FlowNode } from "@/store/flow.store";
  * This gives maximum flexibility for drawing connections.
  */
 const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
-  const { componentId, label, color, strokeColor, iconPath } = data as FlowNodeData;
+  const { label, color, strokeColor, iconPath, componentId } = data as FlowNodeData;
   const [isEditing, setIsEditing] = useState(false);
   const [editLabel, setEditLabel] = useState(label);
 
@@ -30,6 +40,63 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
   const metrics    = useSimulationStore((s) => s.metrics);
   const injections = useSimulationStore((s) => s.activeInjections);
   const updateLabel = useFlowStore((s) => s.updateNodeLabel);
+  const getNodeConfig = useCanvasStore((s) => s.getNodeConfig);
+
+  const storyActive = useStoryStore((s) => s.active);
+  const pathNodeIds = useStoryStore((s) => s.pathNodeIds);
+  const hopIndex = useStoryStore((s) => s.hopIndex);
+  const storyMode = useStoryStore((s) => s.mode);
+
+  const overlay = useArchitectureStudioStore((s) => s.overlay);
+  const blastFocusNodeId = useArchitectureStudioStore((s) => s.blastFocusNodeId);
+  const eras = useArchitectureStudioStore((s) => s.eras);
+  const eraDiffFromId = useArchitectureStudioStore((s) => s.eraDiffFromId);
+  const eraDiffToId = useArchitectureStudioStore((s) => s.eraDiffToId);
+  const allNodes = useFlowStore((s) => s.nodes);
+  const allEdges = useFlowStore((s) => s.edges);
+
+  const onPath = storyActive && pathNodeIds.includes(id);
+  const isCurrentHop = storyActive && pathNodeIds[hopIndex] === id;
+  const dimmed = storyActive && pathNodeIds.length > 0 && !onPath;
+  const hopRole: HopRole | null = onPath ? classifyHop(componentId) : null;
+  const failTint = storyMode === "fail" && isCurrentHop;
+
+  const blast = useMemo(() => {
+    if (overlay !== "blast" || !blastFocusNodeId) return null;
+    return computeBlastRadius(allNodes, allEdges, blastFocusNodeId);
+  }, [overlay, blastFocusNodeId, allNodes, allEdges]);
+
+  const blastSev = blast?.severity[id];
+  const blastDim =
+    overlay === "blast" && blast && blastSev === "ok";
+  const blastTint =
+    blastSev === "epicenter"
+      ? "#dc2626"
+      : blastSev === "down"
+        ? "#ef4444"
+        : blastSev === "degraded"
+          ? "#d97706"
+          : null;
+
+  const costEst =
+    overlay === "cost"
+      ? estimateNodeCost(componentId, getNodeConfig(id))
+      : null;
+
+  const eraDiff = useMemo(() => {
+    if (!eraDiffFromId || !eraDiffToId) return null;
+    const a = eras.find((e) => e.id === eraDiffFromId);
+    const b = eras.find((e) => e.id === eraDiffToId);
+    if (!a || !b) return null;
+    const aIds = new Set(a.nodes.map((n) => n.data?.componentId + "@" + (n.data?.label ?? "")));
+    const bIds = new Set(b.nodes.map((n) => n.data?.componentId + "@" + (n.data?.label ?? "")));
+    const key = `${componentId}@${label}`;
+    const inA = aIds.has(key);
+    const inB = bIds.has(key);
+    if (inB && !inA) return "added";
+    if (inA && !inB) return "removed";
+    return null;
+  }, [eraDiffFromId, eraDiffToId, eras, componentId, label]);
 
   const m          = metrics[id];
   const nodeInj    = injections.filter((i) => i.nodeId === id);
@@ -39,13 +106,27 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
   const isBottle   = m && m.isBottleneck && !isCrashed;
 
   // Chaos color always wins over idle stroke; selection adds an outer ring.
-  const borderColor = chaosDef ? chaosDef.color : strokeColor;
+  const borderColor = blastTint
+    ? blastTint
+    : failTint
+    ? "#dc2626"
+    : isCurrentHop
+      ? "var(--pd-brand)"
+      : eraDiff === "added"
+        ? "#16a34a"
+        : eraDiff === "removed"
+          ? "#dc2626"
+          : chaosDef
+            ? chaosDef.color
+            : strokeColor;
 
   const handleLabelCommit = () => {
     setIsEditing(false);
     if (editLabel.trim()) updateLabel(id, editLabel.trim());
     else setEditLabel(label);
   };
+
+  const opacity = dimmed || blastDim ? 0.28 : eraDiff === "removed" ? 0.45 : 1;
 
   return (
     <div
@@ -55,14 +136,22 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
         background: "var(--pd-surface)",
         border: `2px solid ${borderColor}`,
         boxShadow: [
-          selected ? `0 0 0 3px color-mix(in srgb, var(--pd-brand) 35%, transparent)` : null,
-          chaosDef ? `0 0 14px color-mix(in srgb, ${chaosDef.color} 45%, transparent)` : null,
+          isCurrentHop
+            ? `0 0 0 3px color-mix(in srgb, var(--pd-brand) 40%, transparent), 0 0 18px color-mix(in srgb, var(--pd-brand) 35%, transparent)`
+            : selected
+              ? `0 0 0 3px color-mix(in srgb, var(--pd-brand) 35%, transparent)`
+              : null,
+          blastTint ? `0 0 14px color-mix(in srgb, ${blastTint} 45%, transparent)` : null,
+          failTint ? `0 0 16px color-mix(in srgb, #dc2626 50%, transparent)` : null,
+          chaosDef && !isCurrentHop && !blastTint ? `0 0 14px color-mix(in srgb, ${chaosDef.color} 45%, transparent)` : null,
           "var(--pd-shadow-sm)",
         ].filter(Boolean).join(", "),
-        transition: "border-color 150ms, box-shadow 150ms",
+        transition: "border-color 150ms, box-shadow 150ms, opacity 180ms",
         overflow: "hidden",
         fontFamily: "var(--ui-font, Assistant, sans-serif)",
         userSelect: "none",
+        opacity,
+        filter: dimmed || blastDim ? "grayscale(0.4)" : undefined,
       }}
     >
       {/* ── Handles — all 4 sides, each side has source+target ─── */}
@@ -149,6 +238,57 @@ const FlowNode = memo(({ id, data, selected }: NodeProps<FlowNode>) => {
           }} title={chaosDef.label} />
         )}
       </div>
+
+      {hopRole && (
+        <div
+          style={{
+            padding: "3px 10px",
+            background: `color-mix(in srgb, ${HOP_ROLE_COLORS[hopRole]} 14%, transparent)`,
+            borderBottom: `1px solid color-mix(in srgb, ${HOP_ROLE_COLORS[hopRole]} 28%, transparent)`,
+            fontSize: 9,
+            fontWeight: 800,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            color: HOP_ROLE_COLORS[hopRole],
+            textAlign: "center",
+          }}
+        >
+          {isCurrentHop ? `● ${hopRole}` : hopRole}
+        </div>
+      )}
+
+      {costEst && costEst.monthlyUsd > 0 && (
+        <div
+          style={{
+            padding: "3px 10px",
+            fontSize: 9,
+            fontWeight: 700,
+            color: "var(--pd-text-muted)",
+            textAlign: "center",
+            borderBottom: "1px solid var(--pd-border)",
+            background: "color-mix(in srgb, var(--pd-brand) 6%, transparent)",
+          }}
+        >
+          ~${costEst.monthlyUsd}/mo · {costEst.rpsHint.toLocaleString()} rps
+        </div>
+      )}
+
+      {eraDiff && (
+        <div
+          style={{
+            padding: "3px 10px",
+            fontSize: 9,
+            fontWeight: 800,
+            letterSpacing: "0.05em",
+            textTransform: "uppercase",
+            textAlign: "center",
+            color: eraDiff === "added" ? "#16a34a" : "#dc2626",
+            borderBottom: "1px solid var(--pd-border)",
+          }}
+        >
+          {eraDiff === "added" ? "Added in To" : "Only in From"}
+        </div>
+      )}
 
       {/* ── Live metrics (simulation only) ──────────────── */}
       {isRunning && m && (

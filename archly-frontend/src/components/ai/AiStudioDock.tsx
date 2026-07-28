@@ -71,6 +71,14 @@ const CHAT_SUGGESTIONS = [
   "Add a Redis cache in front of the DB",
 ];
 
+const SCHEMA_CHAT_SUGGESTIONS = [
+  "Summarize this schema",
+  "What is this table used for?",
+  "How do these tables connect?",
+  "Suggest missing foreign keys",
+  "Add a notifications table linked to users",
+];
+
 function sanitizeMermaid(raw: string): string {
   let s = raw.trim();
   s = s.replace(/^```(?:mermaid)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
@@ -189,7 +197,9 @@ export default function AiStudioDock({
             <span style={{ flex: 1, fontSize: 11, color: "var(--pd-text-subtle)", minWidth: 0 }}>
               {tab === "generate"
                 ? "Architecture or Schema → canvas"
-                : "Ask, inject chaos, or add nodes"}
+                : canvas === "schema"
+                  ? "Ask about tables, FKs, or edit the ERD"
+                  : "Ask, inject chaos, or add nodes"}
             </span>
             <button type="button" onClick={onClose} title="Close" style={iconBtn}>
               ✕
@@ -642,6 +652,8 @@ function ChatPane({ canvas }: { canvas: CanvasKind }) {
   const [provider, setProvider] = useState<AiProvider>("groq");
   const listRef = useRef<HTMLDivElement>(null);
   const providerRef = useRef<AiProvider>("groq");
+  const isSchema = canvas === "schema";
+  const suggestions = isSchema ? SCHEMA_CHAT_SUGGESTIONS : CHAT_SUGGESTIONS;
 
   useEffect(() => {
     providerRef.current = provider;
@@ -694,9 +706,11 @@ function ChatPane({ canvas }: { canvas: CanvasKind }) {
       >
         {messages.length === 0 && (
           <div style={{ color: "var(--pd-text-muted)", fontSize: 12, lineHeight: 1.5 }}>
-            Diagram is on the canvas — ask questions, add nodes, or inject chaos.
+            {isSchema
+              ? "Your ERD is on the canvas — ask what tables are for, how they connect, or request edits."
+              : "Diagram is on the canvas — ask questions, add nodes, or inject chaos."}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
-              {CHAT_SUGGESTIONS.map((s) => (
+              {suggestions.map((s) => (
                 <button
                   key={s}
                   type="button"
@@ -780,7 +794,11 @@ function ChatPane({ canvas }: { canvas: CanvasKind }) {
               onSubmit(e);
             }
           }}
-          placeholder="Ask, add a service, or inject chaos…"
+          placeholder={
+            isSchema
+              ? "Ask about a table, FKs, or “add a sessions table”…"
+              : "Ask, add a service, or inject chaos…"
+          }
           rows={2}
           disabled={isStreaming}
           style={{

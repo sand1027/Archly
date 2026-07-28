@@ -1,20 +1,32 @@
 "use client";
 
-import { use, useState, useCallback } from "react";
+import { use, useState, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { getProblem } from "@/lib/simulation/scenarios";
 import InterviewTimer from "@/components/interview/InterviewTimer";
+import ComponentPalette from "@/components/canvas/ComponentPalette";
 import dynamic from "next/dynamic";
 import type { InterviewStatus } from "@/types";
+import { useFlowStore } from "@/store/flow.store";
+import {
+  freehandRubricTips,
+  scoreInterviewFlow,
+} from "@/lib/architecture/interview-rubric";
 
 const ExcalidrawWrapper = dynamic(
   () => import("@/components/canvas/ExcalidrawWrapper"),
   { ssr: false }
 );
 
+const FlowCanvas = dynamic(() => import("@/components/flow/FlowCanvas"), {
+  ssr: false,
+});
+
 interface Props {
   params: Promise<{ problemId: string }>;
 }
+
+type CanvasMode = "flow" | "freehand";
 
 export default function InterviewSessionPage({ params }: Props) {
   const { problemId } = use(params);
@@ -23,6 +35,7 @@ export default function InterviewSessionPage({ params }: Props) {
 
   const [status, setStatus] = useState<InterviewStatus>("idle");
   const [showPrompt, setShowPrompt] = useState(true);
+  const [canvasMode, setCanvasMode] = useState<CanvasMode>("flow");
 
   const handleEnd = useCallback(() => {
     setStatus("ended");
@@ -127,6 +140,37 @@ export default function InterviewSessionPage({ params }: Props) {
 
         <div style={{ flex: 1 }} />
 
+        <div
+          style={{
+            display: "flex",
+            gap: 4,
+            padding: 3,
+            borderRadius: 8,
+            border: "1px solid var(--pd-border)",
+            background: "var(--pd-surface)",
+          }}
+        >
+          {(["flow", "freehand"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => setCanvasMode(m)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 6,
+                border: "none",
+                fontSize: 11,
+                fontWeight: 800,
+                cursor: "pointer",
+                background: canvasMode === m ? "var(--pd-brand)" : "transparent",
+                color: canvasMode === m ? "#fff" : "var(--pd-text-muted)",
+              }}
+            >
+              {m === "flow" ? "Flow" : "Freehand"}
+            </button>
+          ))}
+        </div>
+
         {/* Timer */}
         {status !== "idle" && (
           <InterviewTimer
@@ -224,9 +268,10 @@ export default function InterviewSessionPage({ params }: Props) {
         </button>
       </div>
 
-      {/* Canvas area */}
-      <div style={{ flex: 1, position: "relative" }}>
-        <ExcalidrawWrapper />
+      <div style={{ flex: 1, position: "relative", display: "flex" }}>
+        {canvasMode === "flow" && <ComponentPalette />}
+        <div style={{ flex: 1, position: "relative" }}>
+        {canvasMode === "flow" ? <FlowCanvas /> : <ExcalidrawWrapper />}
 
         {/* Prompt overlay (before start) */}
         {showPrompt && status === "idle" && (
@@ -331,10 +376,12 @@ export default function InterviewSessionPage({ params }: Props) {
         {status === "ended" && (
           <InterviewEndOverlay
             problem={problem}
+            canvasMode={canvasMode}
             onNewProblem={() => router.push("/interview")}
             onOpenCanvas={() => router.push("/canvas")}
           />
         )}
+        </div>
       </div>
     </div>
   );
@@ -342,13 +389,25 @@ export default function InterviewSessionPage({ params }: Props) {
 
 function InterviewEndOverlay({
   problem,
+  canvasMode,
   onNewProblem,
   onOpenCanvas,
 }: {
   problem: NonNullable<ReturnType<typeof getProblem>>;
+  canvasMode: CanvasMode;
   onNewProblem: () => void;
   onOpenCanvas: () => void;
 }) {
+  const nodes = useFlowStore((s) => s.nodes);
+  const edges = useFlowStore((s) => s.edges);
+  const autoScore = useMemo(
+    () =>
+      canvasMode === "flow"
+        ? scoreInterviewFlow(nodes, edges)
+        : freehandRubricTips(),
+    [canvasMode, nodes, edges]
+  );
+
   const rubric = problem.rubric ?? [];
   const [checked, setChecked] = useState<Record<number, boolean>>({});
   const [selfGrade, setSelfGrade] = useState(3);
@@ -375,6 +434,38 @@ function InterviewEndOverlay({
           <p style={{ color: "var(--pd-text-muted)", margin: 0, fontSize: 13 }}>
             {problem.title} · {problem.durationMins} minutes
           </p>
+        </div>
+
+        <div
+          style={{
+            marginBottom: 16,
+            padding: 12,
+            borderRadius: 12,
+            border: "1px solid color-mix(in srgb, var(--pd-brand) 30%, var(--pd-border))",
+            background: "color-mix(in srgb, var(--pd-brand) 8%, var(--pd-surface))",
+          }}
+        >
+          <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.05em", textTransform: "uppercase", color: "var(--pd-brand)", marginBottom: 4 }}>
+            Theater score · {canvasMode === "flow" ? "Flow" : "Freehand tips"}
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: "var(--pd-text)" }}>
+            {autoScore.percent}%
+            <span style={{ fontSize: 13, fontWeight: 600, color: "var(--pd-text-muted)", marginLeft: 8 }}>
+              {autoScore.score}/{autoScore.maxScore}
+            </span>
+          </div>
+          {autoScore.oneLiner && (
+            <p style={{ margin: "8px 0 0", fontSize: 12, color: "var(--pd-text-muted)", lineHeight: 1.4 }}>
+              {autoScore.oneLiner}
+            </p>
+          )}
+          <ul style={{ margin: "10px 0 0", padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+            {autoScore.items.map((item) => (
+              <li key={item.id} style={{ fontSize: 12, color: item.passed ? "var(--pd-text)" : "var(--pd-text-muted)" }}>
+                {item.passed ? "✓" : "○"} {item.label}
+              </li>
+            ))}
+          </ul>
         </div>
 
         {rubric.length > 0 && (

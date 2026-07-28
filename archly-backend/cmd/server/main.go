@@ -102,7 +102,7 @@ func main() {
 	r.Use(func(next http.Handler) http.Handler {
 		timeout := chimiddleware.Timeout(60 * time.Second)(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if strings.HasPrefix(req.URL.Path, "/v1/ai/") {
+			if strings.HasPrefix(req.URL.Path, "/v1/ai/") || strings.HasPrefix(req.URL.Path, "/v1/schema/") {
 				next.ServeHTTP(w, req)
 				return
 			}
@@ -176,6 +176,15 @@ func main() {
 		r.Post("/text-to-diagram/chat-streaming", aih.TextToDiagramStream)
 		r.Post("/canvas-chat", aih.CanvasChat)
 		r.Post("/diagram-to-code/generate", aih.DiagramToCode)
+	})
+
+	// Schema — DB introspection → ERD graph (JWT optional)
+	r.Route("/v1/schema", func(r chi.Router) {
+		r.Use(middleware.JWTOptional(cfg))
+		sh := handlers.NewSchemaHandler()
+		r.Post("/databases", sh.ListDatabases)
+		r.Post("/tables", sh.ListTables)
+		r.Post("/introspect", sh.Introspect)
 	})
 
 	// WebSocket rooms

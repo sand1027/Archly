@@ -64,8 +64,8 @@ export const AI_PROVIDER_OPTIONS: {
   {
     value: "openrouter",
     label: "OpenRouter",
-    description: "Cloud fallback models",
-    hint: "cloud",
+    description: "Free cloud models with auto fallback if one is empty",
+    hint: "free+",
   },
 ];
 

@@ -79,7 +79,18 @@ docker compose down -v
 
 ## CLI (experimental)
 
-Headless client for generate / export / session management against the same API:
+Headless client for generate / export / session management against the same API.
+
+### Via Docker (same Archly compose)
+
+```bash
+docker compose up -d --build cli
+docker compose exec cli archly doctor
+docker compose exec -it cli archly login
+docker compose exec cli archly generate "Design a payments platform" -o payments.mmd
+```
+
+### Local binary
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sand1027/Archly/main/archly-cli/install.sh | bash
@@ -106,6 +117,7 @@ Docs: [`archly-cli/README.md`](archly-cli/README.md) · Plan: [`cliplan.md`](cli
 |-----------|------|-------------|
 | `archly-web` | 3000 | Next.js frontend with hot-reload |
 | `archly-api` | 8080 | Go REST + WebSocket API with Air hot-reload |
+| `archly-cli` | — | CLI container (`compose exec cli archly …`) |
 | `archly-db` | 5432 | PostgreSQL 16 |
 | `archly-redis` | 6379 | Redis 7 |
 | `archly-kafka` | 9092 | Kafka (Confluent) |
@@ -185,7 +197,7 @@ The AI feature requires at least one provider key. Both are free tier.
 3. Add to `.env`:
    ```
    OPENROUTER_API_KEY=your-key-here
-   OPENROUTER_MODEL=inclusionai/ling-3.0-flash:free
+   OPENROUTER_MODEL=arcee-ai/trinity-large-preview:free
    ```
 
 If both keys are set, Gemini is tried first and OpenRouter is used automatically on quota errors.
@@ -203,7 +215,7 @@ If both keys are set, Gemini is tried first and OpenRouter is used automatically
 | `GEMINI_API_KEY` | No | — | Google Gemini API key |
 | `GEMINI_MODEL` | No | `gemini-2.0-flash` | Gemini model name |
 | `OPENROUTER_API_KEY` | No | — | OpenRouter API key |
-| `OPENROUTER_MODEL` | No | `inclusionai/ling-3.0-flash:free` | OpenRouter model slug |
+| `OPENROUTER_MODEL` | No | `arcee-ai/trinity-large-preview:free` | OpenRouter model slug (auto-falls back across free models) |
 | `STRIPE_SECRET_KEY` | No | — | Stripe payments (optional) |
 | `PORT` | No | `8080` | API server port |
 | `ENVIRONMENT` | No | `development` | `development` or `production` |

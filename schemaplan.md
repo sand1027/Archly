@@ -100,14 +100,13 @@ type SchemaTableData = {
 | 10 | DesignKind `"schema"` migration + API gate | ✅ (hydrate/save UI still light) |
 | 11 | Empty Schema hero (chips) | ✅ |
 | 12 | Schema palette + table properties editor | ✅ |
+| 13 | **Live DB import** — URL → introspect → canvas nodes/edges | ✅ |
 
 ### Out of MVP / next
 
 - Full History save/open for `kind: "schema"`
-- Live DB introspect / migrate apply
-- Prisma / Drizzle exporters
+- Migrate apply / Prisma / Drizzle exporters
 - Link Architecture “Postgres” node → Schema doc
-- CLI: `archly schema generate`
 
 ---
 
@@ -202,6 +201,41 @@ Apply migration when ready:
 | 2026-07-27 | Plan created. |
 | 2026-07-27 | MVP implemented: Schema mode, store, nodes, er converter, AI mode=schema, export MMD/SQL, empty hero, table editor, DesignKind+migration. |
 | 2026-07-27 | `archly-schema.Modelfile` (few-shot erDiagram) + `OLLAMA_SCHEMA_MODEL`; Architecture-for-this prompts match Modelfile user phrasing. |
+| 2026-07-28 | Live DB import: `POST /v1/schema/introspect`, Schema palette + empty hero UI (postgres/mysql/mongodb/sqlite → RF graph). |
+| 2026-07-28 | DB import v2: list databases/tables, partial collection picker, re-import diff, Prisma/SQL/Mongo migrate export, AI explain table/schema, architecture-from-schema button. |
+
+---
+
+## 10. Live DB import (v2)
+
+### API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /v1/schema/databases` | List databases (Mongo/Postgres/MySQL) |
+| `POST /v1/schema/tables` | List tables/collections (no sampling) |
+| `POST /v1/schema/introspect` | `{ url, database?, schema?, tables?[] }` → RF graph |
+
+### UX flow
+
+1. Paste connection URL → **Connect** → pick database
+2. **Load tables** → checkbox picker (partial import for large Atlas DBs)
+3. **Import** → canvas + baseline snapshot for drift
+4. **Re-import & diff** → highlights added/removed/changed tables (border + badge)
+5. **Explain this table (AI)** in properties panel — purpose, columns, connections
+6. **Explain entire schema (AI)** + **Architecture for this schema** in AI panel
+7. **Export** → SQL, Prisma, MongoDB migration script (`migrate-mongo.js`)
+
+### Files
+
+```
+archly-backend/internal/schema/list_tables.go
+archly-frontend/src/lib/schema/schema-diff.ts
+archly-frontend/src/lib/schema/schema-to-prisma.ts
+archly-frontend/src/lib/schema/schema-to-mongo-migrate.ts
+archly-frontend/src/lib/schema/schema-explain.ts
+archly-frontend/src/hooks/useSchemaExplain.ts
+```
 
 ---
 
@@ -212,5 +246,6 @@ Apply migration when ready:
 - [x] Tables show columns with PK/FK markers
 - [x] Relationship edges show cardinality
 - [x] Export downloads `.mmd` and `.sql`
+- [x] Import live database via URL (Schema mode)
 - [x] Architecture Flow unchanged (isolated store)
 - [ ] Save/History fully understands schema sessions (next)

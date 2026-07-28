@@ -6,6 +6,7 @@ import {
   SCHEMA_TABLE_TEMPLATES,
   type SchemaTableTemplate,
 } from "@/lib/schema/schema-templates";
+import SchemaDbImport from "@/components/schema/SchemaDbImport";
 import { useSchemaStore } from "@/store/schema.store";
 import type { CSSProperties } from "react";
 
@@ -86,6 +87,8 @@ export default function SchemaPalette({ onOpenAi }: Props) {
       </div>
 
       <div style={{ flex: 1, overflow: "auto", padding: "10px 10px 14px" }}>
+        <SchemaDbImport variant="panel" />
+
         {/* AI — primary path */}
         <button
           type="button"

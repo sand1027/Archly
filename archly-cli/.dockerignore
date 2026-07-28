@@ -1,0 +1,7 @@
+# Keep build context lean for the CLI image
+archly
+*.md
+.gitignore
+scripts/
+install.sh
+!docker-entrypoint.sh

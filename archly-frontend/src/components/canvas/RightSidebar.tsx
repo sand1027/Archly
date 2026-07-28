@@ -4,7 +4,6 @@ import type { CSSProperties, ReactNode } from "react";
 import PropertiesPanel from "@/components/canvas/PropertiesPanel";
 import AiStudioDock, { type AiDockTab } from "@/components/ai/AiStudioDock";
 import ChaosPanel from "@/components/simulation/ChaosPanel";
-import SchemaAiPanel from "@/components/schema/SchemaAiPanel";
 import SchemaPropertiesPanel from "@/components/schema/SchemaPropertiesPanel";
 import type { CanvasKind } from "@/lib/ai/diagram-snapshot";
 import type { AiProvider } from "@/lib/ai/providers";
@@ -36,8 +35,10 @@ interface Props {
     nonce?: number;
   } | null;
   onSchemaSeedClear?: () => void;
-  /** Schema → Architecture bridge */
+  /** Schema → Architecture bridge (kept for callers; dock Generate handles this too) */
   onArchitectureForThis?: (prompt: string, provider: AiProvider) => void;
+  /** Architecture DB node → Schema canvas with AI seed */
+  onOpenSchemaFromNode?: (prompt: string) => void;
 }
 
 export default function RightSidebar({
@@ -58,6 +59,7 @@ export default function RightSidebar({
   schemaSeed,
   onSchemaSeedClear,
   onArchitectureForThis,
+  onOpenSchemaFromNode,
 }: Props) {
   const tabs =
     mode === "schema"
@@ -74,6 +76,10 @@ export default function RightSidebar({
             { id: "ai" as const, label: "AI" },
             { id: "config" as const, label: "Config" },
           ] as const);
+
+  const schemaAiPrompt = schemaSeed?.prompt ?? null;
+  const schemaAiProvider = schemaSeed?.provider ?? null;
+  const schemaAutoStart = schemaSeed?.autoStart ?? false;
 
   return (
     <aside
@@ -110,15 +116,32 @@ export default function RightSidebar({
       <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
         {mode === "schema" ? (
           tab === "config" ? (
-            <SchemaPropertiesPanel />
+            <SchemaPropertiesPanel
+              onOpenArchitecture={
+                onArchitectureForThis
+                  ? (prompt) => {
+                      onPreferFlow?.();
+                      onArchitectureForThis(prompt, "groq");
+                    }
+                  : undefined
+              }
+            />
           ) : (
-            <SchemaAiPanel
-              key={schemaSeed?.nonce ?? "schema-ai"}
-              initialPrompt={schemaSeed?.prompt ?? null}
-              initialProvider={schemaSeed?.provider ?? null}
-              autoStart={schemaSeed?.autoStart ?? false}
+            <AiStudioDock
+              key={`schema-ai-${schemaSeed?.nonce ?? "default"}`}
+              layout="sidebar"
+              isOpen
+              onClose={() => onTabChange("config")}
+              tab={aiSubTab}
+              onTabChange={onAiSubTabChange}
+              canvas="schema"
+              initialDiagramMode="schema"
+              onPreferSchema={onPreferSchema}
+              onPreferFlow={onPreferFlow}
+              initialPrompt={schemaAiPrompt}
+              initialProvider={schemaAiProvider}
+              autoStart={schemaAutoStart}
               onSeedConsumed={onSchemaSeedClear}
-              onArchitectureForThis={onArchitectureForThis}
             />
           )
         ) : tab === "chaos" ? (
@@ -139,7 +162,11 @@ export default function RightSidebar({
             onSeedConsumed={onAiSeedClear}
           />
         ) : (
-          <PropertiesPanel activeTab={activeCanvas} embedded />
+          <PropertiesPanel
+            activeTab={activeCanvas}
+            embedded
+            onOpenSchemaFromNode={onOpenSchemaFromNode}
+          />
         )}
       </div>
     </aside>

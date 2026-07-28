@@ -7,6 +7,7 @@ volumes:
   kafka_data:
   zookeeper_data:
   redis_data:
+  archly_cli_home:
 
 services:
   # ─── PostgreSQL ───────────────────────────────────────────────
@@ -174,7 +175,7 @@ services:
       GITHUB_MODELS_TOKEN: ${GITHUB_MODELS_TOKEN:-}
       GITHUB_MODELS_MODEL: ${GITHUB_MODELS_MODEL:-gpt-4o-mini}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-inclusionai/ling-3.0-flash:free}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-arcee-ai/trinity-large-preview:free}
       NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
       NVIDIA_MODEL: ${NVIDIA_MODEL:-meta/llama-3.3-70b-instruct}
       NVIDIA_NEMOTRON_MODEL: ${NVIDIA_NEMOTRON_MODEL:-nvidia/llama-3.3-nemotron-super-49b-v1.5}
@@ -227,3 +228,33 @@ services:
       - /app/.next
     networks:
       - archly-network
+
+  # ─── Archly CLI (Dockerfile in archly-cli/) ───────────────────
+  # Idle container so the binary is always on the stack.
+  # Use: docker compose exec cli archly <cmd>
+  #  Or: docker compose run --rm cli archly <cmd>
+  cli:
+    build:
+      context: ./archly-cli
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${ARCHLY_CLI_VERSION:-0.1.0-docker}
+    image: archly-cli:local
+    container_name: archly-cli
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      ARCHLY_API_URL: ${ARCHLY_CLI_API_URL:-http://api:8080}
+      ARCHLY_APP_URL: ${ARCHLY_CLI_APP_URL:-http://web:3000}
+      ARCHLY_PROVIDER: ${ARCHLY_PROVIDER:-}
+      ARCHLY_TOKEN: ${ARCHLY_TOKEN:-}
+    volumes:
+      - archly_cli_home:/home/archly/.archly
+      - ./:/work
+    working_dir: /work
+    networks:
+      - archly-network
+    # Entrypoint fixes .archly volume perms, then sleeps as user archly
+    # Run CLI: docker compose exec -it cli archly login

@@ -53,6 +53,9 @@ export interface FlowStore {
   removeNode: (nodeId: string) => void;
   insertNodeOnEdge: (edgeId: string, componentId: string, label: string, color: string, strokeColor: string, iconPath: string, position: XYPosition) => string;
   updateNodeLabel: (nodeId: string, label: string) => void;
+  updateEdgeData: (edgeId: string, data: Record<string, unknown>) => void;
+  /** Replace graph (gallery fork, eras, promote). Pushes history. */
+  loadGraph: (nodes: FlowNode[], edges: FlowEdge[]) => void;
   pushHistory: () => void;
   undo: () => void;
   redo: () => void;
@@ -209,6 +212,27 @@ export const useFlowStore = create<FlowStore>()((set, get) => ({
         n.id === nodeId ? { ...n, data: { ...n.data, label } } : n
       ),
     })),
+
+  updateEdgeData: (edgeId, data) =>
+    withHistory(set, get, (s) => ({
+      edges: s.edges.map((e: FlowEdge) =>
+        e.id === edgeId
+          ? { ...e, data: { ...(e.data ?? {}), ...data } }
+          : e
+      ),
+    })),
+
+  loadGraph: (nodes, edges) => {
+    const s = get();
+    set({
+      past: [...s.past, cloneSnap(s.nodes, s.edges)].slice(-MAX_HISTORY),
+      future: [],
+      nodes: JSON.parse(JSON.stringify(nodes)),
+      edges: JSON.parse(JSON.stringify(edges)),
+      selectedNodeId: null,
+      fitViewNonce: s.fitViewNonce + 1,
+    });
+  },
 
   reset: () => set({ nodes: [], edges: [], selectedNodeId: null, past: [], future: [], fitViewNonce: 0 }),
 }));

@@ -22,6 +22,19 @@ interface SchemaSnapshot {
   edges: SchemaEdge[];
 }
 
+export interface SchemaImportMeta {
+  driver: string;
+  database: string;
+  schema: string;
+}
+
+export interface SchemaSessionConnection {
+  url: string;
+  database?: string;
+  schema?: string;
+  driver: string;
+}
+
 const MAX_HISTORY = 50;
 
 function cloneSnap(nodes: SchemaNode[], edges: SchemaEdge[]): SchemaSnapshot {
@@ -38,6 +51,10 @@ export interface SchemaStore {
   past: SchemaSnapshot[];
   future: SchemaSnapshot[];
   fitViewNonce: number;
+  importMeta: SchemaImportMeta | null;
+  sessionConnection: SchemaSessionConnection | null;
+  baselineNodes: SchemaNode[];
+  baselineEdges: SchemaEdge[];
   setSelectedTableId: (id: string | null) => void;
   onNodesChange: (changes: unknown[]) => void;
   onEdgesChange: (changes: unknown[]) => void;
@@ -61,6 +78,13 @@ export interface SchemaStore {
   ) => void;
   /** Replace or merge graph; always wires FK-based connections. */
   setGraph: (nodes: SchemaNode[], edges: SchemaEdge[], opts?: { merge?: boolean }) => void;
+  /** Save import metadata + baseline for drift diff / re-import. */
+  setImportContext: (
+    meta: SchemaImportMeta,
+    connection: SchemaSessionConnection,
+    nodes: SchemaNode[],
+    edges: SchemaEdge[]
+  ) => void;
   updateTable: (nodeId: string, patch: Partial<SchemaTableData>) => void;
   removeTable: (nodeId: string) => void;
   pushHistory: () => void;
@@ -91,6 +115,10 @@ export const useSchemaStore = create<SchemaStore>()((set, get) => ({
   past: [],
   future: [],
   fitViewNonce: 0,
+  importMeta: null,
+  sessionConnection: null,
+  baselineNodes: [],
+  baselineEdges: [],
 
   setSelectedTableId: (id) => set({ selectedTableId: id }),
 
@@ -240,6 +268,15 @@ export const useSchemaStore = create<SchemaStore>()((set, get) => ({
     set((s) => ({ fitViewNonce: s.fitViewNonce + 1 }));
   },
 
+  setImportContext: (meta, connection, nodes, edges) => {
+    set({
+      importMeta: meta,
+      sessionConnection: connection,
+      baselineNodes: JSON.parse(JSON.stringify(nodes)),
+      baselineEdges: JSON.parse(JSON.stringify(edges)),
+    });
+  },
+
   pushHistory: () => {
     const s = get();
     set({
@@ -280,6 +317,10 @@ export const useSchemaStore = create<SchemaStore>()((set, get) => ({
       past: [],
       future: [],
       fitViewNonce: 0,
+      importMeta: null,
+      sessionConnection: null,
+      baselineNodes: [],
+      baselineEdges: [],
     }),
 
   requestFitView: () => set((s) => ({ fitViewNonce: s.fitViewNonce + 1 })),

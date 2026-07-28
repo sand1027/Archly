@@ -14,10 +14,11 @@ interface Props {
   onGenerate: (prompt: string, provider: AiProvider) => void;
   onOpenAi: () => void;
   onOpenSchema?: () => void;
+  onOpenGallery?: () => void;
 }
 
 /** Centered empty-state for Flow — chips + one generate CTA. */
-export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSchema }: Props) {
+export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSchema, onOpenGallery }: Props) {
   const [prompt, setPrompt] = useState("");
   const [provider, setProvider] = useState<AiProvider>("groq");
 
@@ -221,6 +222,24 @@ export default function FlowEmptyHero({ visible, onGenerate, onOpenAi, onOpenSch
               }}
             >
               Need a database schema? → Schema AI
+            </button>
+          )}
+          {onOpenGallery && (
+            <button
+              type="button"
+              onClick={onOpenGallery}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--pd-brand)",
+                fontSize: 12,
+                fontWeight: 600,
+                cursor: "pointer",
+                textDecoration: "underline",
+                textUnderlineOffset: 3,
+              }}
+            >
+              Fork a starter architecture
             </button>
           )}
         </div>

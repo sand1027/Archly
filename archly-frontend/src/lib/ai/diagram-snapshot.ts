@@ -7,9 +7,11 @@ import { getExcalidrawAPI } from "@/lib/excalidraw-api";
 import { getComponent } from "@/lib/components-registry";
 import { useCanvasStore } from "@/store/canvas.store";
 import { useFlowStore } from "@/store/flow.store";
+import { useSchemaStore } from "@/store/schema.store";
 import { useSimulationStore } from "@/store/simulation.store";
+import type { SchemaColumn } from "@/types/schema";
 
-export type CanvasKind = "excalidraw" | "flow";
+export type CanvasKind = "excalidraw" | "flow" | "schema";
 
 export interface DiagramNodeSnapshot {
   id: string;
@@ -142,6 +144,36 @@ function buildFlowSnapshot(): Pick<DiagramSnapshot, "nodes" | "edges" | "selecti
   return { nodes, edges, selection };
 }
 
+function buildSchemaSnapshot(): Pick<DiagramSnapshot, "nodes" | "edges" | "selection"> {
+  const { nodes: schemaNodes, edges: schemaEdges, selectedTableId } = useSchemaStore.getState();
+
+  const nodes: DiagramNodeSnapshot[] = schemaNodes.map((n) => {
+    const cols = ((n.data?.columns ?? []) as SchemaColumn[])
+      .slice(0, 16)
+      .map((c) => {
+        const flags = [c.pk && "PK", c.fk && `FK→${c.fk.table}`, c.unique && "UK"]
+          .filter(Boolean)
+          .join(",");
+        return flags ? `${c.name}:${c.type}(${flags})` : `${c.name}:${c.type}`;
+      })
+      .join(", ");
+    return {
+      id: n.id,
+      label: String(n.data?.tableName ?? n.id),
+      componentId: "database-table",
+      description: cols || undefined,
+    };
+  });
+
+  const edges: DiagramEdgeSnapshot[] = schemaEdges.map((e) => ({
+    source: e.source,
+    target: e.target,
+  }));
+
+  const selection = selectedTableId ? [selectedTableId] : [];
+  return { nodes, edges, selection };
+}
+
 function buildChaosAndMetrics(nodeIds: Set<string>): Pick<DiagramSnapshot, "chaos" | "metrics"> {
   const { activeInjections, metrics } = useSimulationStore.getState();
 
@@ -172,8 +204,17 @@ function buildChaosAndMetrics(nodeIds: Set<string>): Pick<DiagramSnapshot, "chao
 
 /** Snapshot the active canvas for the chat API. */
 export function buildDiagramSnapshot(canvas: CanvasKind): DiagramSnapshot {
-  const base = canvas === "flow" ? buildFlowSnapshot() : buildExcalidrawSnapshot();
+  const base =
+    canvas === "schema"
+      ? buildSchemaSnapshot()
+      : canvas === "flow"
+        ? buildFlowSnapshot()
+        : buildExcalidrawSnapshot();
   const nodeIds = new Set(base.nodes.map((n) => n.id));
+  // Schema mode has no chaos/sim metrics
+  if (canvas === "schema") {
+    return { ...base, chaos: [], metrics: [] };
+  }
   const { chaos, metrics } = buildChaosAndMetrics(nodeIds);
   return { ...base, chaos, metrics };
 }

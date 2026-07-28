@@ -77,7 +77,7 @@ func Load() (*Config, error) {
 		GitHubModelsToken:    getEnv("GITHUB_MODELS_TOKEN", ""),
 		GitHubModelsModel:    getEnv("GITHUB_MODELS_MODEL", "gpt-4o-mini"),
 		OpenRouterAPIKey:     getEnv("OPENROUTER_API_KEY", ""),
-		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
+		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "arcee-ai/trinity-large-preview:free"),
 		NvidiaAPIKey:         getEnv("NVIDIA_API_KEY", ""),
 		NvidiaModel:          getEnv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct"),
 		NvidiaNemotronModel:  getEnv("NVIDIA_NEMOTRON_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),

@@ -7,22 +7,36 @@ import { useFlowStore } from "@/store/flow.store";
 import { getComponent } from "@/lib/components-registry";
 import { CATEGORY_LABELS } from "@/lib/components-registry";
 import { CHAOS_TYPES, getChaosType } from "@/lib/simulation/chaos";
+import {
+  isSchemaLinkableComponent,
+  schemaForDatabaseNodePrompt,
+} from "@/lib/architecture/schema-deep-link";
+import { useStoryStore } from "@/store/story.store";
 import type { NodeConfig } from "@/store/canvas.store";
 import type { ChaosType, ComponentCategory } from "@/types";
 
 export default function PropertiesPanel({
   activeTab,
   embedded = false,
+  onOpenSchemaFromNode,
 }: {
   activeTab: "canvas" | "flow";
   embedded?: boolean;
+  /** Deep-link: Architecture DB node → Schema canvas */
+  onOpenSchemaFromNode?: (prompt: string) => void;
 }) {
   const excalidrawSelectedId = useCanvasStore((s) => s.selectedElementIds[0]);
   const flowSelectedId = useFlowStore((s) => s.selectedNodeId);
   const selectedId = activeTab === "flow" ? (flowSelectedId ?? null) : (excalidrawSelectedId ?? null);
 
   if (!selectedId) return <EmptyPanel embedded={embedded} />;
-  return <SelectedPanel selectedId={selectedId} embedded={embedded} />;
+  return (
+    <SelectedPanel
+      selectedId={selectedId}
+      embedded={embedded}
+      onOpenSchemaFromNode={onOpenSchemaFromNode}
+    />
+  );
 }
 
 function EmptyPanel({ embedded }: { embedded?: boolean }) {
@@ -74,9 +88,18 @@ function EmptyPanel({ embedded }: { embedded?: boolean }) {
   );
 }
 
-function SelectedPanel({ selectedId, embedded }: { selectedId: string; embedded?: boolean }) {
+function SelectedPanel({
+  selectedId,
+  embedded,
+  onOpenSchemaFromNode,
+}: {
+  selectedId: string;
+  embedded?: boolean;
+  onOpenSchemaFromNode?: (prompt: string) => void;
+}) {
   const element = useCanvasStore((s) => s.elements.find((e) => e.id === selectedId));
   const flowNode = useFlowStore((s) => s.nodes.find((n) => n.id === selectedId));
+  const flowNodes = useFlowStore((s) => s.nodes);
   const nodeConfigs = useCanvasStore((s) => s.nodeConfigs);
   const setNodeConfig = useCanvasStore((s) => s.setNodeConfig);
 
@@ -86,6 +109,13 @@ function SelectedPanel({ selectedId, embedded }: { selectedId: string; embedded?
   const setPendingChaosType = useSimulationStore((s) => s.setPendingChaosType);
   const removeChaos = useSimulationStore((s) => s.removeChaos);
   const isRunning = useSimulationStore((s) => s.isRunning);
+
+  const storyActive = useStoryStore((s) => s.active);
+  const storyStartId = useStoryStore((s) => s.startId);
+  const storyEndId = useStoryStore((s) => s.endId);
+  const setStoryStartId = useStoryStore((s) => s.setStartId);
+  const setStoryEndId = useStoryStore((s) => s.setEndId);
+  const activateStory = useStoryStore((s) => s.activate);
 
   const nodeMetrics = metrics[selectedId] ?? null;
   const nodeInjections = activeInjections.filter((i) => i.nodeId === selectedId);
@@ -222,6 +252,134 @@ function SelectedPanel({ selectedId, embedded }: { selectedId: string; embedded?
       </div>
 
       <div className="scrollbar-hide" style={{ flex: 1, overflowY: "auto" }}>
+        {flowNode && (
+          <Section title="Story path">
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (storyActive) setStoryStartId(selectedId);
+                    else activateStory({ startId: selectedId });
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border:
+                      storyStartId === selectedId
+                        ? "1px solid color-mix(in srgb, var(--pd-brand) 45%, var(--pd-border))"
+                        : "1px solid var(--pd-border)",
+                    background:
+                      storyStartId === selectedId
+                        ? "color-mix(in srgb, var(--pd-brand) 12%, var(--pd-surface))"
+                        : "var(--pd-surface)",
+                    color: "var(--pd-text)",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {storyStartId === selectedId ? "● Start" : "Set as start"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (storyActive) setStoryEndId(selectedId);
+                    else activateStory({ endId: selectedId });
+                  }}
+                  style={{
+                    flex: 1,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border:
+                      storyEndId === selectedId
+                        ? "1px solid color-mix(in srgb, var(--pd-brand) 45%, var(--pd-border))"
+                        : "1px solid var(--pd-border)",
+                    background:
+                      storyEndId === selectedId
+                        ? "color-mix(in srgb, var(--pd-brand) 12%, var(--pd-surface))"
+                        : "var(--pd-surface)",
+                    color: "var(--pd-text)",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {storyEndId === selectedId ? "● End" : "Set as end"}
+                </button>
+              </div>
+              <p style={{ margin: 0, fontSize: 11, color: "var(--pd-text-subtle)", lineHeight: 1.4 }}>
+                Story walks the request from start → end hop by hop.
+              </p>
+            </div>
+          </Section>
+        )}
+
+        {flowNode && (
+          <OutboundEdgesSection nodeId={selectedId} />
+        )}
+
+        {isSchemaLinkableComponent(compId) && onOpenSchemaFromNode && (
+          <Section title="Schema">
+            <button
+              type="button"
+              onClick={() => {
+                const siblings = flowNodes
+                  .filter((n) => n.id !== selectedId)
+                  .map((n) => String((n.data as { label?: string })?.label ?? ""))
+                  .filter(Boolean);
+                const prompt = schemaForDatabaseNodePrompt(
+                  String(label),
+                  compId!,
+                  siblings
+                );
+                onOpenSchemaFromNode(prompt);
+              }}
+              style={{
+                width: "100%",
+                padding: "11px 12px",
+                borderRadius: 10,
+                border: "1px solid color-mix(in srgb, var(--pd-brand) 35%, var(--pd-border))",
+                background:
+                  "linear-gradient(135deg, color-mix(in srgb, var(--pd-brand) 14%, var(--pd-surface)), var(--pd-surface))",
+                color: "var(--pd-text)",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                textAlign: "left",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+              }}
+            >
+              <span
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  display: "grid",
+                  placeItems: "center",
+                  background: "color-mix(in srgb, var(--pd-brand) 16%, transparent)",
+                  color: "var(--pd-brand)",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  flexShrink: 0,
+                }}
+              >
+                ⇄
+              </span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                <span>Open in Schema</span>
+                <span style={{ fontSize: 11, fontWeight: 500, color: "var(--pd-text-subtle)" }}>
+                  Design tables for this datastore
+                </span>
+              </span>
+              <span style={{ marginLeft: "auto", color: "var(--pd-brand)", fontWeight: 800 }}>→</span>
+            </button>
+          </Section>
+        )}
+
         {isRunning && nodeMetrics && (
           <Section title="Live">
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4 }}>
@@ -548,6 +706,80 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     </div>
   );
 }
+
+function OutboundEdgesSection({ nodeId }: { nodeId: string }) {
+  const edges = useFlowStore((s) => s.edges);
+  const nodes = useFlowStore((s) => s.nodes);
+  const updateEdgeData = useFlowStore((s) => s.updateEdgeData);
+  const outbound = edges.filter((e) => e.source === nodeId);
+  if (!outbound.length) return null;
+
+  return (
+    <Section title="Decisions & contracts">
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {outbound.map((e) => {
+          const tgt = nodes.find((n) => n.id === e.target);
+          const data = (e.data ?? {}) as {
+            decisionWhy?: string;
+            requestContract?: string;
+            responseContract?: string;
+          };
+          const toLabel = String(tgt?.data?.label ?? e.target);
+          return (
+            <div
+              key={e.id}
+              style={{
+                padding: 8,
+                borderRadius: 8,
+                border: "1px solid var(--pd-border)",
+                background: "var(--pd-surface)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "var(--pd-text)" }}>→ {toLabel}</div>
+              <textarea
+                placeholder="Why this edge? (decision ledger)"
+                value={data.decisionWhy ?? ""}
+                onChange={(ev) => updateEdgeData(e.id, { decisionWhy: ev.target.value })}
+                rows={2}
+                style={ta}
+              />
+              <textarea
+                placeholder='Request sample e.g. { "userId": "…" }'
+                value={data.requestContract ?? ""}
+                onChange={(ev) => updateEdgeData(e.id, { requestContract: ev.target.value })}
+                rows={2}
+                style={ta}
+              />
+              <textarea
+                placeholder='Response sample e.g. { "ok": true }'
+                value={data.responseContract ?? ""}
+                onChange={(ev) => updateEdgeData(e.id, { responseContract: ev.target.value })}
+                rows={2}
+                style={ta}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </Section>
+  );
+}
+
+const ta: React.CSSProperties = {
+  width: "100%",
+  resize: "vertical",
+  padding: "6px 8px",
+  borderRadius: 6,
+  border: "1px solid var(--pd-border)",
+  background: "var(--pd-bg)",
+  color: "var(--pd-text)",
+  fontSize: 11,
+  fontFamily: "inherit",
+  boxSizing: "border-box",
+};
 
 function DenseGrid({ children }: { children: React.ReactNode }) {
   return (

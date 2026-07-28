@@ -62,7 +62,7 @@ type DiagramContext struct {
 type CanvasChatRequest struct {
 	Messages []ChatMessage  `json:"messages"`
 	Diagram  DiagramContext `json:"diagram"`
-	Canvas   string         `json:"canvas"`   // "excalidraw" | "flow"
+	Canvas   string         `json:"canvas"`   // "excalidraw" | "flow" | "schema"
 	Provider string         `json:"provider"` // "ollama" | "groq" | "github" | "openrouter" | "" (auto)
 }
 
@@ -96,6 +96,35 @@ Rules for actions:
 - Keep prose concise (2–6 sentences). Do not put JSON in the prose section.
 - Use selection when the user says "this" / "selected" without naming a node.`
 
+const schemaChatSystemPrompt = `You are Archly's database schema assistant. The canvas is an ERD: nodes are tables/collections, edges are relationships (FKs).
+
+You can:
+1. Explain what a table is for, why columns exist, and how tables connect.
+2. Summarize the whole schema (domain, core entities, auth patterns, missing indexes/FKs).
+3. Mutate the schema when asked: add/remove/rename tables, connect/disconnect relationships.
+
+When mutating, end your reply with an actions fence AFTER short prose:
+
+` + "```actions" + `
+{"actions":[{"type":"add_node","componentId":"database-table","label":"notifications","x":400,"y":200},{"type":"remove_node","nodeId":"<id>"},{"type":"relabel","nodeId":"<id>","label":"new_table_name"},{"type":"connect","source":"<parentId>","target":"<childId>"},{"type":"disconnect","source":"<id>","target":"<id>"}]}
+` + "```" + `
+
+Rules:
+- Prefer exact nodeId from diagram context. Labels may be used via nodeLabel / sourceLabel / targetLabel.
+- For add_node, use componentId "database-table" and set label to the table name.
+- connect is parent → child (1:N). disconnect removes that relationship edge.
+- No chaos actions in Schema mode.
+- Pure questions get prose only — no actions fence.
+- Keep prose concise (2–8 sentences). Be specific to the table/column names in context.
+- Use selection when the user says "this" / "selected" without naming a table.`
+
+func systemPromptForCanvas(canvas string) string {
+	if strings.EqualFold(strings.TrimSpace(canvas), "schema") {
+		return schemaChatSystemPrompt
+	}
+	return canvasChatSystemPrompt
+}
+
 var actionsFenceRE = regexp.MustCompile("(?s)```(?:actions|json)\\s*\\n(\\{.*?\"actions\".*?\\})\\s*```")
 var bareActionsRE = regexp.MustCompile(`(?s)(\{\s*"actions"\s*:\s*\[.*?\]\s*\})\s*$`)
 
@@ -114,13 +143,14 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 
 	userPayload := buildCanvasChatUserPayload(req)
 	provider := strings.TrimSpace(strings.ToLower(req.Provider))
+	sysPrompt := systemPromptForCanvas(req.Canvas)
 
 	// ── Provider pinning ──────────────────────────────────────────────────
 	switch provider {
 	case "ollama":
 		if s.cfg.OllamaBaseURL != "" {
 			log.Info().Str("user_id", userID).Str("provider", "ollama").Msg("ai: canvas chat pinned to Ollama")
-			full, err := s.ollamaChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+			full, err := s.ollamaChatCollect(ctx, userID, sysPrompt, userPayload)
 			if err != nil {
 				return err
 			}
@@ -130,7 +160,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 	case "groq":
 		if s.cfg.GroqAPIKey != "" {
 			log.Info().Str("user_id", userID).Str("provider", "groq").Msg("ai: canvas chat pinned to Groq")
-			full, err := s.groqChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+			full, err := s.groqChatCollect(ctx, userID, sysPrompt, userPayload)
 			if err != nil {
 				return err
 			}
@@ -140,7 +170,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 	case "github":
 		if s.cfg.GitHubModelsToken != "" {
 			log.Info().Str("user_id", userID).Str("provider", "github").Msg("ai: canvas chat pinned to GitHub Models")
-			full, err := s.openaiCompatChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload,
+			full, err := s.openaiCompatChatCollect(ctx, userID, sysPrompt, userPayload,
 				githubModelsURL, s.cfg.GitHubModelsModel, s.cfg.GitHubModelsToken, "github")
 			if err != nil {
 				return err
@@ -151,13 +181,14 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 	case "openrouter":
 		if s.cfg.OpenRouterAPIKey != "" {
 			log.Info().Str("user_id", userID).Str("provider", "openrouter").Msg("ai: canvas chat pinned to OpenRouter")
-			full, err := s.openRouterChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
-			if err != nil {
-				return err
+			full, err := s.openRouterChatCollect(ctx, userID, sysPrompt, userPayload)
+			if err == nil {
+				return s.writeCanvasChatSSE(w, full)
 			}
-			return s.writeCanvasChatSSE(w, full)
+			log.Warn().Err(err).Str("user_id", userID).Msg("ai: pinned OpenRouter canvas chat failed — falling through")
+		} else {
+			log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
 		}
-		log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
 	}
 
 	// ── Auto fallback: Ollama → Groq → OpenRouter ───────────────────────
@@ -173,7 +204,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 			Int("nodes", len(req.Diagram.Nodes)).
 			Msg("ai: CanvasChatStream — trying Ollama")
 
-		full, err = s.ollamaChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+		full, err = s.ollamaChatCollect(ctx, userID, sysPrompt, userPayload)
 		if err == nil {
 			return s.writeCanvasChatSSE(w, full)
 		}
@@ -189,7 +220,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 			Int("nodes", len(req.Diagram.Nodes)).
 			Msg("ai: CanvasChatStream — trying Groq")
 
-		full, err = s.groqChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+		full, err = s.groqChatCollect(ctx, userID, sysPrompt, userPayload)
 		if err == nil {
 			return s.writeCanvasChatSSE(w, full)
 		}
@@ -203,7 +234,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 	if s.cfg.GitHubModelsToken != "" {
 		log.Info().Str("user_id", userID).Str("provider", "github").
 			Str("model", s.cfg.GitHubModelsModel).Msg("ai: CanvasChatStream — trying GitHub Models")
-		full, err = s.openaiCompatChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload,
+		full, err = s.openaiCompatChatCollect(ctx, userID, sysPrompt, userPayload,
 			githubModelsURL, s.cfg.GitHubModelsModel, s.cfg.GitHubModelsToken, "github")
 		if err == nil {
 			return s.writeCanvasChatSSE(w, full)
@@ -218,7 +249,7 @@ func (s *AIService) CanvasChatStream(ctx context.Context, req CanvasChatRequest,
 			Str("model", s.cfg.OpenRouterModel).
 			Msg("ai: CanvasChatStream — trying OpenRouter")
 
-		full, err = s.openRouterChatCollect(ctx, userID, canvasChatSystemPrompt, userPayload)
+		full, err = s.openRouterChatCollect(ctx, userID, sysPrompt, userPayload)
 		if err == nil {
 			return s.writeCanvasChatSSE(w, full)
 		}
@@ -353,7 +384,19 @@ func (s *AIService) groqChatCollect(ctx context.Context, userID, system, user st
 }
 
 func (s *AIService) openRouterChatCollect(ctx context.Context, userID, system, user string) (string, error) {
-	return s.openaiCompatChatCollect(ctx, userID, system, user, openRouterURL, s.cfg.OpenRouterModel, s.cfg.OpenRouterAPIKey, "openrouter")
+	var lastErr error
+	for _, model := range openRouterModelCandidates(s.cfg.OpenRouterModel) {
+		full, err := s.openaiCompatChatCollect(ctx, userID, system, user, openRouterURL, model, s.cfg.OpenRouterAPIKey, "openrouter")
+		if err == nil {
+			return full, nil
+		}
+		lastErr = err
+		log.Warn().Err(err).Str("user_id", userID).Str("model", model).Msg("ai: OpenRouter chat model failed — trying next")
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("openrouter: no models available")
+	}
+	return "", lastErr
 }
 
 func (s *AIService) ollamaChatCollect(ctx context.Context, userID, system, user string) (string, error) {
@@ -377,10 +420,7 @@ func (s *AIService) openaiCompatChatCollect(ctx context.Context, userID, system,
 	if err != nil {
 		return "", fmt.Errorf("build %s request: %w", provider, err)
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+apiKey)
-	}
+	setOpenAICompatHeaders(req, apiKey, provider)
 
 	resp, err := s.client.Do(req)
 	if err != nil {
@@ -412,9 +452,24 @@ func (s *AIService) openaiCompatChatCollect(ctx context.Context, userID, system,
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 			continue
 		}
+		if chunk.Error != nil && strings.TrimSpace(chunk.Error.Message) != "" {
+			return "", fmt.Errorf("%s stream error: %s", provider, chunk.Error.Message)
+		}
 		for _, choice := range chunk.Choices {
-			if choice.Delta.Content != "" {
+			text := deltaVisibleText(
+				choice.Delta.Content,
+				choice.Delta.Reasoning,
+				choice.Delta.ReasoningContent,
+			)
+			if text != "" {
+				full.WriteString(text)
+			} else if choice.Delta.Content != "" {
 				full.WriteString(choice.Delta.Content)
+			} else if choice.Delta.Reasoning != "" {
+				// Chat can use reasoning as reply when content is empty
+				full.WriteString(choice.Delta.Reasoning)
+			} else if choice.Delta.ReasoningContent != "" {
+				full.WriteString(choice.Delta.ReasoningContent)
 			}
 		}
 	}
@@ -422,8 +477,8 @@ func (s *AIService) openaiCompatChatCollect(ctx context.Context, userID, system,
 		return full.String(), err
 	}
 	if full.Len() == 0 {
-		log.Warn().Str("user_id", userID).Str("provider", provider).Msg("ai: canvas chat returned empty")
-		return "", fmt.Errorf("empty %s response", provider)
+		log.Warn().Str("user_id", userID).Str("provider", provider).Str("model", model).Msg("ai: canvas chat returned empty")
+		return "", fmt.Errorf("empty %s response for model %s", provider, model)
 	}
 	return full.String(), nil
 }

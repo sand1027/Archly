@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import ModelSelect from "@/components/ai/ModelSelect";
+import SchemaDbImport from "@/components/schema/SchemaDbImport";
 import {
   readStoredAiProvider,
   storeAiProvider,
@@ -192,6 +193,8 @@ export default function SchemaEmptyHero({ visible, onGenerate, onOpenAi }: Props
             </button>
           ))}
         </div>
+
+        <SchemaDbImport variant="compact" />
 
         <button
           type="button"

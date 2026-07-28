@@ -6,6 +6,9 @@ import { useCanvasStore } from "@/store/canvas.store";
 import { useSchemaStore } from "@/store/schema.store";
 import { getExcalidrawAPI } from "@/lib/excalidraw-api";
 import { schemaToMermaid, schemaToSql } from "@/lib/schema/schema-to-sql";
+import { schemaToPrisma } from "@/lib/schema/schema-to-prisma";
+import { schemaToMongoMigrate } from "@/lib/schema/schema-to-mongo-migrate";
+import { serializeDecisionAdr } from "@/lib/architecture/serialize-adr";
 import type { DesignKind } from "@/types";
 
 type ExportKind = DesignKind | "schema";
@@ -100,6 +103,7 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
   const canvasElements = useCanvasStore((s) => s.elements);
   const schemaNodes = useSchemaStore((s) => s.nodes);
   const schemaEdges = useSchemaStore((s) => s.edges);
+  const importMeta = useSchemaStore((s) => s.importMeta);
 
   if (!isOpen) return null;
 
@@ -124,10 +128,35 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
     flash("Downloaded Mermaid (.mmd)");
   };
 
+  const exportAdr = () => {
+    const text = serializeDecisionAdr(flowNodes, flowEdges);
+    downloadText("archly-adr.md", text, "text/markdown");
+    flash("Downloaded ADR (.md)");
+  };
+
   const exportSql = () => {
     const text = schemaToSql(schemaNodes, schemaEdges);
     downloadText("archly-schema.sql", text, "text/sql");
     flash("Downloaded SQL (.sql)");
+  };
+
+  const exportPrisma = () => {
+    const provider =
+      importMeta?.driver === "mongodb"
+        ? "mongodb"
+        : importMeta?.driver === "mysql"
+          ? "mysql"
+          : "postgresql";
+    const text = schemaToPrisma(schemaNodes, schemaEdges, provider);
+    downloadText("schema.prisma", text, "text/plain");
+    flash("Downloaded Prisma schema");
+  };
+
+  const exportMongoMigrate = () => {
+    const db = importMeta?.database || importMeta?.schema || "mydb";
+    const text = schemaToMongoMigrate(schemaNodes, schemaEdges, db);
+    downloadText("migrate-mongo.js", text, "text/javascript");
+    flash("Downloaded MongoDB migration script");
   };
 
   const exportPng = async () => {
@@ -274,12 +303,25 @@ export default function ExportMenu({ isOpen, onClose, kind }: ExportMenuProps) {
             }
             onClick={exportMermaid}
           />
-          {kind === "schema" && (
+          {kind === "flow" && (
             <ExportBtn
-              label="Export SQL"
-              desc="CREATE TABLE + FK constraints (.sql)"
-              onClick={exportSql}
+              label="Export ADR"
+              desc="Decision ledger + contracts as Markdown"
+              onClick={exportAdr}
             />
+          )}
+          {kind === "schema" && (
+            <>
+              <ExportBtn label="Export SQL" desc="CREATE TABLE + FK constraints (.sql)" onClick={exportSql} />
+              <ExportBtn label="Export Prisma" desc="schema.prisma for your DB driver" onClick={exportPrisma} />
+              {(importMeta?.driver === "mongodb" || !importMeta) && (
+                <ExportBtn
+                  label="Export Mongo migration"
+                  desc="mongosh script: collections, validators, indexes"
+                  onClick={exportMongoMigrate}
+                />
+              )}
+            </>
           )}
           <ExportBtn
             label="Export PNG"
@@ -312,13 +354,37 @@ function ExportBtn({
   label,
   desc,
   onClick,
+  accent,
 }: {
   label: string;
   desc: string;
   onClick: () => void;
+  accent?: string;
 }) {
   return (
-    <button type="button" onClick={onClick} style={exportBtn}>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        ...exportBtn,
+        borderColor: accent
+          ? `color-mix(in srgb, ${accent} 35%, var(--pd-border))`
+          : "var(--pd-border)",
+        background: accent
+          ? `color-mix(in srgb, ${accent} 7%, var(--pd-bg))`
+          : "var(--pd-bg)",
+      }}
+      onMouseEnter={(e) => {
+        e.currentTarget.style.borderColor = accent || "var(--pd-brand)";
+        e.currentTarget.style.boxShadow = "var(--pd-shadow-sm)";
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.borderColor = accent
+          ? `color-mix(in srgb, ${accent} 35%, var(--pd-border))`
+          : "var(--pd-border)";
+        e.currentTarget.style.boxShadow = "none";
+      }}
+    >
       <span style={{ fontWeight: 700, fontSize: 13, color: "var(--pd-text)" }}>{label}</span>
       <span style={{ fontSize: 11, color: "var(--pd-text-muted)" }}>{desc}</span>
     </button>
@@ -375,10 +441,11 @@ const exportBtn: CSSProperties = {
   flexDirection: "column",
   alignItems: "flex-start",
   gap: 2,
-  padding: "10px 12px",
-  borderRadius: "var(--pd-radius)",
+  padding: "11px 13px",
+  borderRadius: 10,
   border: "1px solid var(--pd-border)",
   background: "var(--pd-bg)",
   cursor: "pointer",
   textAlign: "left",
+  transition: "border-color 120ms, box-shadow 120ms",
 };

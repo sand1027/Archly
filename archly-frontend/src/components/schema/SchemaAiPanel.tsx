@@ -19,6 +19,7 @@ import { looksLikeSchemaIncremental } from "@/lib/schema/schema-edges";
 import { toast } from "@/store/toast.store";
 import { SCHEMA_EXAMPLES } from "./SchemaEmptyHero";
 import { architectureForThisSchemaPrompt } from "@/lib/schema/cross-prompts";
+import { useSchemaExplain } from "@/hooks/useSchemaExplain";
 
 const ADD_EXAMPLES = [
   {
@@ -61,6 +62,9 @@ export default function SchemaAiPanel({
   const lastPromptRef = useRef("");
   const setGraph = useSchemaStore((s) => s.setGraph);
   const tableCount = useSchemaStore((s) => s.nodes.length);
+  const schemaNodes = useSchemaStore((s) => s.nodes);
+  const schemaEdges = useSchemaStore((s) => s.edges);
+  const { text: explainText, isStreaming: explaining, explainFullSchema, cancel: cancelExplain } = useSchemaExplain();
 
   const { stream, cancel, isStreaming, error } = useAiStream({
     onDone: (full) => {
@@ -152,7 +156,7 @@ export default function SchemaAiPanel({
         <button
           type="button"
           onClick={runArchitectureForThis}
-          disabled={isStreaming}
+          disabled={isStreaming || explaining}
           style={{
             width: "100%",
             padding: "10px 12px",
@@ -162,18 +166,64 @@ export default function SchemaAiPanel({
             color: "var(--pd-text)",
             fontSize: 12.5,
             fontWeight: 700,
-            cursor: isStreaming ? "not-allowed" : "pointer",
+            cursor: isStreaming || explaining ? "not-allowed" : "pointer",
             textAlign: "left",
             display: "flex",
             flexDirection: "column",
             gap: 2,
           }}
         >
-          <span>Architecture for this</span>
+          <span>Architecture for this schema</span>
           <span style={{ fontSize: 11, fontWeight: 500, color: "var(--pd-text-subtle)" }}>
-            Build system design from your {tableCount} table{tableCount === 1 ? "" : "s"}
+            One click → system design from {tableCount} table{tableCount === 1 ? "" : "s"}
           </span>
         </button>
+      )}
+
+      {tableCount > 0 && (
+        <button
+          type="button"
+          onClick={() => explainFullSchema(schemaNodes, schemaEdges, provider)}
+          disabled={isStreaming || explaining}
+          style={{
+            width: "100%",
+            padding: "10px 12px",
+            borderRadius: 8,
+            border: "1px solid var(--pd-border)",
+            background: "var(--pd-bg-subtle)",
+            color: "var(--pd-text)",
+            fontSize: 12.5,
+            fontWeight: 700,
+            cursor: isStreaming || explaining ? "not-allowed" : "pointer",
+            textAlign: "left",
+          }}
+        >
+          {explaining ? "Explaining schema…" : "Explain entire schema (AI)"}
+        </button>
+      )}
+
+      {explainText && (
+        <div
+          style={{
+            fontSize: 11.5,
+            lineHeight: 1.5,
+            color: "var(--pd-text)",
+            padding: 10,
+            borderRadius: 8,
+            border: "1px solid var(--pd-border)",
+            background: "var(--pd-bg-subtle)",
+            whiteSpace: "pre-wrap",
+            maxHeight: 200,
+            overflowY: "auto",
+          }}
+        >
+          {explainText}
+          {explaining && (
+            <button type="button" onClick={cancelExplain} style={{ display: "block", marginTop: 8, fontSize: 11 }}>
+              Stop
+            </button>
+          )}
+        </div>
       )}
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>

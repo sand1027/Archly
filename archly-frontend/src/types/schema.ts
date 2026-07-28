@@ -19,6 +19,8 @@ export interface SchemaColumn {
 export interface SchemaTableData {
   tableName: string;
   columns: SchemaColumn[];
+  /** Drift highlight from re-import diff */
+  diffStatus?: "added" | "removed" | "changed";
   /** Allow RF extra fields */
   [key: string]: unknown;
 }

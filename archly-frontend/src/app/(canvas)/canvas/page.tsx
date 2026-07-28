@@ -45,6 +45,21 @@ import SchemaEmptyHero from "@/components/schema/SchemaEmptyHero";
 import RightSidebar, { type RightSidebarTab } from "@/components/canvas/RightSidebar";
 import type { AiDockTab } from "@/components/ai/AiStudioDock";
 import CommandPalette, { type CommandItem } from "@/components/ui/CommandPalette";
+import ArchitectureLintPanel from "@/components/architecture/ArchitectureLintPanel";
+import ArchitectureStoryPanel, {
+  ArchitectureStoryLaunchButton,
+} from "@/components/architecture/ArchitectureStoryPanel";
+import ArchToolsFab from "@/components/architecture/ArchToolsFab";
+import ArchitectureCritiquePanel from "@/components/architecture/ArchitectureCritiquePanel";
+import ArchitectureBlastPanel from "@/components/architecture/ArchitectureBlastPanel";
+import ArchitectureConstraintsPanel, {
+  ArchitectureCostStrip,
+  ArchitectureErasPanel,
+} from "@/components/architecture/ArchitectureStudioPanels";
+import ArchitectureGalleryModal from "@/components/architecture/ArchitectureGalleryModal";
+import PromoteToFlowButton from "@/components/architecture/PromoteToFlowButton";
+import { useStoryStore } from "@/store/story.store";
+import { useArchitectureStudioStore } from "@/store/architecture-studio.store";
 import { useSchemaStore } from "@/store/schema.store";
 
 import { useCanvasStore } from "@/store/canvas.store";
@@ -122,6 +137,7 @@ export default function CanvasPage() {
     // Always clear BOTH stores — no async, no race condition
     useCanvasStore.getState().setSelectedElementIds([]);
     useFlowStore.getState().setSelectedNodeId(null);
+    if (tab !== "flow") useStoryStore.getState().stop();
     setActiveTab(tab);
   }, []);
 
@@ -190,12 +206,16 @@ export default function CanvasPage() {
 
   const handleStudioMode = useCallback((mode: StudioMode) => {
     setStudioMode(mode);
+    if (mode !== "design" && mode !== "simulate") {
+      useStoryStore.getState().stop();
+    }
     if (mode === "simulate") {
       handleTabSwitch("flow");
       setRightTab("chaos");
     } else if (mode === "schema") {
       useSimulationStore.getState().stop();
       setRightTab("ai");
+      setAiSubTab("generate");
     } else {
       useSimulationStore.getState().stop();
       if (mode === "design") setRightTab("ai");
@@ -214,6 +234,11 @@ export default function CanvasPage() {
   const activeInjections = useSimulationStore((s) => s.activeInjections);
   const flowNodeCount = useFlowStore((s) => s.nodes.length);
   const schemaTableCount = useSchemaStore((s) => s.nodes.length);
+  const storyActive = useStoryStore((s) => s.active);
+  const archOverlay = useArchitectureStudioStore((s) => s.overlay);
+  const galleryOpen = useArchitectureStudioStore((s) => s.galleryOpen);
+  /** Full-canvas focus for Story / Guide / Arch overlays */
+  const focusWalkthrough = storyActive || guideOpen || !!archOverlay || galleryOpen;
   const markClean        = useCanvasStore((s) => s.markClean);
 
   // ── Collab ────────────────────────────────────────────────────────────
@@ -583,7 +608,11 @@ export default function CanvasPage() {
       }
       if (e.altKey && e.key === "g") {
         e.preventDefault();
-        setGuideOpen((v) => !v);
+        setGuideOpen((v) => {
+          const next = !v;
+          if (next) useStoryStore.getState().stop();
+          return next;
+        });
       }
       if (e.altKey && e.key === "s") { e.preventDefault(); handleSave(); }
       if (e.altKey && e.key === "h") {
@@ -621,10 +650,11 @@ export default function CanvasPage() {
     } else {
       setAiSeed(null);
     }
+    handleTabSwitch("flow");
     setStudioMode("design");
     setRightTab("ai");
     setAiSubTab("generate");
-  }, []);
+  }, [handleTabSwitch]);
 
   const openSchemaGenerate = useCallback((prompt?: string, provider?: AiProvider) => {
     if (prompt) {
@@ -751,9 +781,12 @@ export default function CanvasPage() {
         group: "AI",
         run: () => {
           setGuideOpen(false);
-          setStudioMode("design");
           setRightTab("ai");
           setAiSubTab("chat");
+          // Stay in schema if already there; otherwise open Design chat
+          if (studioMode !== "schema" && studioMode !== "design") {
+            setStudioMode("design");
+          }
         },
       },
       {
@@ -771,7 +804,7 @@ export default function CanvasPage() {
         run: () => setShortcutsOpen(true),
       },
     ],
-    [handleSave, handleSaveAs, handleShare, handleStudioMode, handleTabSwitch, openAiGenerate, openSchemaGenerate, requestClearActive]
+    [handleSave, handleSaveAs, handleShare, handleStudioMode, handleTabSwitch, openAiGenerate, openSchemaGenerate, requestClearActive, studioMode]
   );
 
   return (
@@ -799,7 +832,10 @@ export default function CanvasPage() {
           setRightTab("ai");
           setAiSubTab("chat");
         }}
-        onOpenGuide={() => setGuideOpen(true)}
+        onOpenGuide={() => {
+          useStoryStore.getState().stop();
+          setGuideOpen(true);
+        }}
         onOpenShare={handleShare}
         onOpenInterview={() => router.push("/interview")}
         onPublish={handlePublish}
@@ -821,9 +857,9 @@ export default function CanvasPage() {
       />
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden", position: "relative" }}>
-        {/* Left palette */}
-        {studioMode === "design" && <ComponentPalette />}
-        {studioMode === "schema" && (
+        {/* Left palette — hidden during Story / Guide focus */}
+        {studioMode === "design" && !focusWalkthrough && <ComponentPalette />}
+        {studioMode === "schema" && !focusWalkthrough && (
           <SchemaPalette onOpenAi={(prompt) => openSchemaGenerate(prompt)} />
         )}
 
@@ -869,6 +905,39 @@ export default function CanvasPage() {
                 onGenerate={(prompt, provider) => openAiGenerate(prompt, provider)}
                 onOpenAi={() => openAiGenerate()}
                 onOpenSchema={() => openSchemaGenerate()}
+                onOpenGallery={() => useArchitectureStudioStore.getState().setGalleryOpen(true)}
+              />
+            )}
+            {studioMode === "design" && activeTab === "flow" && !storyActive && !archOverlay && (
+              <ArchitectureLintPanel />
+            )}
+            {(studioMode === "design" || studioMode === "simulate") && activeTab === "flow" && (
+              <>
+                {!storyActive && (
+                  <ArchToolsFab lifted={studioMode === "simulate"} />
+                )}
+                <ArchitectureStoryLaunchButton
+                  lifted={studioMode === "simulate"}
+                  onActivate={() => {
+                    setGuideOpen(false);
+                    useArchitectureStudioStore.getState().clearOverlay();
+                    useArchitectureStudioStore.getState().setGalleryOpen(false);
+                  }}
+                />
+                <ArchitectureStoryPanel lifted={studioMode === "simulate"} />
+                <ArchitectureCritiquePanel />
+                <ArchitectureBlastPanel />
+                <ArchitectureConstraintsPanel />
+                <ArchitectureErasPanel />
+                <ArchitectureCostStrip />
+                <ArchitectureGalleryModal />
+              </>
+            )}
+            {studioMode === "design" && activeTab === "canvas" && (
+              <PromoteToFlowButton
+                onDone={() => {
+                  handleTabSwitch("flow");
+                }}
               />
             )}
             {studioMode === "simulate" && (
@@ -900,8 +969,9 @@ export default function CanvasPage() {
           />
         </div>
 
-        {/* Right: AI + Config / Chaos + Config / Schema AI */}
-        {(studioMode === "design" || studioMode === "simulate" || studioMode === "schema") && (
+        {/* Right: AI + Config / Chaos + Config / Schema AI — hidden during Story / Guide */}
+        {(studioMode === "design" || studioMode === "simulate" || studioMode === "schema") &&
+          !focusWalkthrough && (
           <RightSidebar
             tab={
               studioMode === "simulate"
@@ -931,6 +1001,7 @@ export default function CanvasPage() {
             schemaSeed={schemaSeed}
             onSchemaSeedClear={() => setSchemaSeed(null)}
             onArchitectureForThis={(prompt, provider) => openAiGenerate(prompt, provider)}
+            onOpenSchemaFromNode={(prompt) => openSchemaGenerate(prompt)}
           />
         )}
       </div>

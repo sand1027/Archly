@@ -6,8 +6,10 @@ import { getChaosType } from "@/lib/simulation/chaos";
 import { getComponent } from "@/lib/components-registry";
 import { useSimulationStore } from "@/store/simulation.store";
 import { useFlowStore } from "@/store/flow.store";
+import { useSchemaStore } from "@/store/schema.store";
 import type { ChaosType } from "@/types";
 import type { CanvasKind, DiagramSnapshot } from "@/lib/ai/diagram-snapshot";
+import type { SchemaColumn } from "@/types/schema";
 
 export type ChatAction =
   | {
@@ -100,6 +102,27 @@ function flowSnapshot(snapshot: DiagramSnapshot): DiagramSnapshot {
   };
 }
 
+function schemaSnapshot(snapshot: DiagramSnapshot): DiagramSnapshot {
+  const { nodes, edges, selectedTableId } = useSchemaStore.getState();
+  return {
+    ...snapshot,
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      label: String(node.data?.tableName ?? node.id),
+      componentId: "database-table",
+    })),
+    edges: edges.map((edge) => ({ source: edge.source, target: edge.target })),
+    selection: selectedTableId ? [selectedTableId] : [],
+  };
+}
+
+function defaultSchemaColumns(): SchemaColumn[] {
+  return [
+    { name: "id", type: "uuid", pk: true },
+    { name: "created_at", type: "timestamptz", nullable: false },
+  ];
+}
+
 export interface ActionResult {
   ok: boolean;
   message: string;
@@ -121,8 +144,91 @@ export function applyChatActions(
       action.type === "disconnect" ||
       action.type === "relabel"
     ) {
+      if (canvas === "schema") {
+        const schema = useSchemaStore.getState();
+        const liveSnapshot = schemaSnapshot(snapshot);
+
+        if (action.type === "add_node") {
+          const name =
+            action.label?.trim() ||
+            action.componentId?.replace(/[^a-zA-Z0-9_]+/g, "_") ||
+            "new_table";
+          const n = schema.nodes.length;
+          const id = schema.addTable(name, defaultSchemaColumns(), {
+            x: action.x ?? 80 + (n % 4) * 280,
+            y: action.y ?? 80 + Math.floor(n / 4) * 220,
+          });
+          results.push({ ok: true, message: `Added table ${name} (${id})` });
+          continue;
+        }
+
+        if (action.type === "remove_node") {
+          const nodeId = resolveNodeId(liveSnapshot, action.nodeId, action.nodeLabel);
+          if (!nodeId) {
+            results.push({ ok: false, message: "Could not find table to remove" });
+            continue;
+          }
+          const label = nodeLabel(liveSnapshot, nodeId);
+          schema.removeTable(nodeId);
+          results.push({ ok: true, message: `Removed table ${label}` });
+          continue;
+        }
+
+        if (action.type === "relabel") {
+          const nodeId = resolveNodeId(liveSnapshot, action.nodeId, action.nodeLabel);
+          const label = action.label?.trim();
+          if (!nodeId || !label) {
+            results.push({ ok: false, message: "Could not find table or name is empty" });
+            continue;
+          }
+          schema.updateTable(nodeId, { tableName: label });
+          results.push({ ok: true, message: `Renamed table to ${label}` });
+          continue;
+        }
+
+        const source = resolveNodeId(liveSnapshot, action.source, action.sourceLabel);
+        const target = resolveNodeId(liveSnapshot, action.target, action.targetLabel);
+        if (!source || !target) {
+          results.push({ ok: false, message: "Could not resolve both relationship endpoints" });
+          continue;
+        }
+
+        if (action.type === "connect") {
+          const exists = schema.edges.some(
+            (edge) => edge.source === source && edge.target === target
+          );
+          if (exists) {
+            results.push({ ok: false, message: "Relationship already exists" });
+            continue;
+          }
+          schema.onConnect({ source, target });
+          results.push({
+            ok: true,
+            message: `Linked ${nodeLabel(liveSnapshot, source)} → ${nodeLabel(liveSnapshot, target)}`,
+          });
+          continue;
+        }
+
+        // disconnect
+        const before = schema.edges.length;
+        useSchemaStore.setState((s) => ({
+          edges: s.edges.filter(
+            (e) => !(e.source === source && e.target === target)
+          ),
+        }));
+        const after = useSchemaStore.getState().edges.length;
+        results.push({
+          ok: before !== after,
+          message:
+            before !== after
+              ? `Unlinked ${nodeLabel(liveSnapshot, source)} → ${nodeLabel(liveSnapshot, target)}`
+              : "Relationship not found",
+        });
+        continue;
+      }
+
       if (canvas !== "flow") {
-        results.push({ ok: false, message: "Diagram edits are currently available on Flow" });
+        results.push({ ok: false, message: "Diagram edits are currently available on Flow or Schema" });
         continue;
       }
 
@@ -217,6 +323,10 @@ export function applyChatActions(
     }
 
     if (action.type === "clear_chaos") {
+      if (canvas === "schema") {
+        results.push({ ok: false, message: "Chaos is architecture-only — not available in Schema" });
+        continue;
+      }
       const n = sim.activeInjections.length;
       sim.clearAllChaos();
       results.push({
@@ -227,6 +337,10 @@ export function applyChatActions(
     }
 
     if (action.type === "remove_chaos") {
+      if (canvas === "schema") {
+        results.push({ ok: false, message: "Chaos is architecture-only — not available in Schema" });
+        continue;
+      }
       if (action.injectionId) {
         const exists = sim.activeInjections.some((i) => i.id === action.injectionId);
         if (exists) {
@@ -259,6 +373,10 @@ export function applyChatActions(
     }
 
     if (action.type === "inject_chaos") {
+      if (canvas === "schema") {
+        results.push({ ok: false, message: "Chaos is architecture-only — not available in Schema" });
+        continue;
+      }
       const chaosType = String(action.chaosType ?? "");
       if (!CHAOS_TYPES.has(chaosType)) {
         results.push({ ok: false, message: `Unknown chaos type: ${chaosType}` });

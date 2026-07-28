@@ -6,6 +6,22 @@ Generate Mermaid architecture diagrams or database ERDs, save sessions, and expo
 
 ## Install
 
+### Via Docker (root Archly compose)
+
+```bash
+# From repo root — starts with the rest of the stack (no profile needed)
+docker compose up -d --build cli
+
+docker compose exec cli archly version
+docker compose exec cli archly doctor
+docker compose exec -it cli archly login
+docker compose exec cli archly generate "Design a feed" -o feed.mmd
+```
+
+Uses `archly-cli/Dockerfile`, talks to `http://api:8080` on the compose network.
+
+### Binary install
+
 **One command** (downloads release binary, or falls back to `go install`):
 
 ```bash

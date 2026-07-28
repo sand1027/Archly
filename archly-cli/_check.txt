@@ -1,0 +1,3 @@
+/opt/homebrew/bin/archly
+archly is /opt/homebrew/bin/archly
+0.1.0-dev

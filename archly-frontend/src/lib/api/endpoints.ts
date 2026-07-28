@@ -185,3 +185,75 @@ export const aiApi = {
 export const healthApi = {
   check: () => api.get<{ status: string; version: string }>("/health"),
 };
+
+// ─── Schema (DB introspection) ─────────────────────────────────────────────
+
+export interface SchemaIntrospectRequest {
+  url: string;
+  database?: string;
+  schema?: string;
+  tables?: string[];
+}
+
+export interface SchemaListTablesResponse {
+  driver: string;
+  schema: string;
+  tables: string[];
+}
+
+export interface SchemaListDatabasesResponse {
+  driver: string;
+  databases: string[];
+  default?: string;
+}
+
+export interface SchemaGraphNode {
+  id: string;
+  type: string;
+  position: { x: number; y: number };
+  data: {
+    tableName: string;
+    columns: {
+      name: string;
+      type: string;
+      pk?: boolean;
+      unique?: boolean;
+      nullable?: boolean;
+      fk?: { table: string; column: string } | null;
+    }[];
+  };
+}
+
+export interface SchemaGraphEdge {
+  id: string;
+  type: string;
+  source: string;
+  target: string;
+  label?: string;
+  data: {
+    cardinality: string;
+    label?: string;
+    fkColumn?: string;
+  };
+}
+
+export interface SchemaIntrospectResponse {
+  driver: string;
+  schema: string;
+  database: string;
+  tables: number;
+  graph: {
+    nodes: SchemaGraphNode[];
+    edges: SchemaGraphEdge[];
+  };
+  warnings?: string[];
+}
+
+export const schemaApi = {
+  listDatabases: (body: { url: string }) =>
+    api.post<SchemaListDatabasesResponse>("/v1/schema/databases", body),
+  listTables: (body: { url: string; database?: string; schema?: string }) =>
+    api.post<SchemaListTablesResponse>("/v1/schema/tables", body),
+  introspect: (body: SchemaIntrospectRequest) =>
+    api.post<SchemaIntrospectResponse>("/v1/schema/introspect", body),
+};

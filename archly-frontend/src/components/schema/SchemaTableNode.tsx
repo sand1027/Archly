@@ -3,6 +3,7 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { CSSProperties } from "react";
 import type { SchemaColumn, SchemaTableData } from "@/types/schema";
+import { diffStatusColor } from "@/lib/schema/schema-diff";
 
 function badge(col: SchemaColumn): string {
   if (col.pk) return "PK";
@@ -14,6 +15,8 @@ function badge(col: SchemaColumn): string {
 export default function SchemaTableNode({ data, selected }: NodeProps) {
   const table = data as unknown as SchemaTableData;
   const columns = table.columns ?? [];
+  const diffStatus = table.diffStatus;
+  const diffColor = diffStatus ? diffStatusColor(diffStatus) : undefined;
 
   return (
     <div
@@ -23,7 +26,9 @@ export default function SchemaTableNode({ data, selected }: NodeProps) {
         borderRadius: 10,
         border: selected
           ? "1.5px solid var(--pd-brand)"
-          : "1px solid var(--pd-border)",
+          : diffColor
+            ? `2px solid ${diffColor}`
+            : "1px solid var(--pd-border)",
         background: "var(--pd-surface)",
         boxShadow: selected ? "var(--pd-shadow)" : "var(--pd-shadow-sm)",
         overflow: "hidden",
@@ -47,15 +52,6 @@ export default function SchemaTableNode({ data, selected }: NodeProps) {
       >
         <span
           style={{
-            width: 8,
-            height: 8,
-            borderRadius: 2,
-            background: "var(--pd-brand)",
-            flexShrink: 0,
-          }}
-        />
-        <span
-          style={{
             fontSize: 12.5,
             fontWeight: 800,
             color: "var(--pd-text)",
@@ -63,10 +59,16 @@ export default function SchemaTableNode({ data, selected }: NodeProps) {
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
+            flex: 1,
           }}
         >
           {table.tableName}
         </span>
+        {diffStatus && (
+          <span style={{ fontSize: 9, fontWeight: 800, textTransform: "uppercase", color: diffColor }}>
+            {diffStatus}
+          </span>
+        )}
       </div>
 
       <div style={{ padding: "4px 0" }}>

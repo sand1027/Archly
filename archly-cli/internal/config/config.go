@@ -8,8 +8,8 @@ import (
 )
 
 const (
-	defaultAPIURL = "http://localhost:8080"
-	defaultAppURL = "http://localhost:3000"
+	defaultAPIURL = "https://api.archly.sbs"
+	defaultAppURL = "https://archly.sbs"
 )
 
 // Config holds non-secret CLI settings.

@@ -69,9 +69,9 @@ cd archly-cli && make install
 
 ## Quick start
 
-```bash
-export ARCHLY_API_URL=http://localhost:8080   # or your deployed API
+After install, the CLI talks to **https://api.archly.sbs** by default — no env vars required.
 
+```bash
 archly doctor
 archly login                                    # prompts for email/password
 
@@ -94,6 +94,13 @@ archly session list
 archly session get <id> -o restored.mmd
 ```
 
+Local backend (optional):
+
+```bash
+export ARCHLY_API_URL=http://localhost:8080
+archly doctor
+```
+
 ## Config
 
 | Location | Purpose |
@@ -101,11 +108,11 @@ archly session get <id> -o restored.mmd
 | `~/.archly/config.yaml` | API URL, default provider, default mode |
 | `~/.archly/credentials` | JWT tokens (mode `0600`) |
 
-Example `~/.archly/config.yaml`:
+Example `~/.archly/config.yaml` (only needed to override defaults):
 
 ```yaml
-api_url: http://localhost:8080
-app_url: http://localhost:3000
+api_url: https://api.archly.sbs
+app_url: https://archly.sbs
 default_provider: ollama
 default_mode: architecture   # or schema
 ```
@@ -114,8 +121,8 @@ default_mode: architecture   # or schema
 
 | Variable | Purpose |
 |----------|---------|
-| `ARCHLY_API_URL` | API base URL |
-| `ARCHLY_APP_URL` | Web app URL (Phase 2 `open`) |
+| `ARCHLY_API_URL` | Override API (default `https://api.archly.sbs`) |
+| `ARCHLY_APP_URL` | Override app (default `https://archly.sbs`) |
 | `ARCHLY_TOKEN` | JWT for CI (skips credentials file) |
 | `ARCHLY_PROVIDER` | Default AI provider |
 | `ARCHLY_MODE` | Default generate mode |

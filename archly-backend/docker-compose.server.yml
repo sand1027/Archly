@@ -92,7 +92,8 @@ services:
     networks:
       - backend
 
-  # ── Go API ────────────────────────────────────────────────────────────  api:
+  # ── Go API ────────────────────────────────────────────────────────────
+  api:
     build:
       context: .
       dockerfile: Dockerfile

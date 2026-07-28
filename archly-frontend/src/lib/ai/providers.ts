@@ -1,5 +1,13 @@
 /** AI provider keys exposed in the UI. Empty = backend auto fallback chain. */
-export type AiProvider = "" | "ollama" | "groq" | "github" | "openrouter";
+export type AiProvider =
+  | ""
+  | "ollama"
+  | "groq"
+  | "nvidia"
+  | "nvidia-nemotron"
+  | "nvidia-deepseek"
+  | "github"
+  | "openrouter";
 
 export const AI_PROVIDER_STORAGE_KEY = "archly-ai-provider";
 
@@ -14,7 +22,7 @@ export const AI_PROVIDER_OPTIONS: {
   {
     value: "",
     label: "Auto",
-    description: "Ollama → Groq → GitHub → OpenRouter",
+    description: "Ollama → Groq → NVIDIA → GitHub → OpenRouter",
     hint: "fallback",
   },
   {
@@ -26,8 +34,26 @@ export const AI_PROVIDER_OPTIONS: {
   {
     value: "groq",
     label: "Groq",
-    description: "llama-3.3-70b — fast free tier",
+    description: "llama-3.3-70b — fast free tier (best for big schemas)",
     hint: "llama-3.3-70b",
+  },
+  {
+    value: "nvidia",
+    label: "NVIDIA",
+    description: "Llama 3.3 70B via NIM (NVIDIA only — no fallback)",
+    hint: "llama-3.3-70b",
+  },
+  {
+    value: "nvidia-nemotron",
+    label: "NVIDIA Nemotron",
+    description: "Nemotron Super 49B (NVIDIA only — no fallback)",
+    hint: "nemotron-49b",
+  },
+  {
+    value: "nvidia-deepseek",
+    label: "NVIDIA DeepSeek",
+    description: "DeepSeek V4 Pro (NVIDIA only — no fallback)",
+    hint: "deepseek-v4-pro",
   },
   {
     value: "github",
@@ -69,6 +95,10 @@ export function providerIconLetter(provider: AiProvider): string {
       return "A";
     case "groq":
       return "G";
+    case "nvidia":
+    case "nvidia-nemotron":
+    case "nvidia-deepseek":
+      return "N";
     case "github":
       return "O";
     case "openrouter":

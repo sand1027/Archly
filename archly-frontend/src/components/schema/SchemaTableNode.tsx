@@ -75,11 +75,11 @@ export default function SchemaTableNode({ data, selected }: NodeProps) {
             No columns
           </div>
         ) : (
-          columns.map((c) => {
+          columns.map((c, i) => {
             const b = badge(c);
             return (
               <div
-                key={c.name}
+                key={`${c.name}-${c.type}-${i}`}
                 style={{
                   display: "flex",
                   alignItems: "center",

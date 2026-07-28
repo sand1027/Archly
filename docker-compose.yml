@@ -175,6 +175,10 @@ services:
       GITHUB_MODELS_MODEL: ${GITHUB_MODELS_MODEL:-gpt-4o-mini}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-inclusionai/ling-3.0-flash:free}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-meta/llama-3.3-70b-instruct}
+      NVIDIA_NEMOTRON_MODEL: ${NVIDIA_NEMOTRON_MODEL:-nvidia/llama-3.3-nemotron-super-49b-v1.5}
+      NVIDIA_DEEPSEEK_MODEL: ${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-pro}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-archly-architect}
       OLLAMA_SCHEMA_MODEL: ${OLLAMA_SCHEMA_MODEL:-archly-schema}

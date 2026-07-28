@@ -90,5 +90,5 @@ ${serviceLines.join("\n")}
 Connections:
 ${edgeLines.length ? edgeLines.join("\n") : "(none)"}
 
-Build a production-scale ERD (aim 28–45 tables, 35–70 relationships). Cover auth/sessions/roles, core domain, join tables, media/files if relevant, notifications, billing if relevant, and audit_logs. Entity names: no spaces. Output ONLY Mermaid erDiagram — not a flowchart.`;
+Interpret this as a real platform data model — invent detailed tables (5–12 columns each), relationships, and FKs. Aim for 30–40 tables and 35–55 relationships covering auth, core domain, join tables, and audit. Output ONLY Mermaid starting with "erDiagram". No flowchart. No other text.`;
 }

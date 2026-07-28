@@ -27,6 +27,7 @@ const (
 	openRouterURL   = "https://openrouter.ai/api/v1/chat/completions"
 	githubModelsURL = "https://models.inference.ai.azure.com/chat/completions"
 	groqURL         = "https://api.groq.com/openai/v1/chat/completions"
+	nvidiaURL       = "https://integrate.api.nvidia.com/v1/chat/completions"
 )
 
 // AIService manages all AI provider calls.
@@ -38,8 +39,18 @@ type AIService struct {
 
 func NewAIService(cfg *config.Config, producer kafka.Producer) *AIService {
 	return &AIService{
-		cfg:      cfg,
-		client:   &http.Client{Timeout: 8 * time.Minute},
+		cfg: cfg,
+		client: &http.Client{
+			// Full stream can take minutes for large Mermaid; fail fast if headers never arrive.
+			Timeout: 8 * time.Minute,
+			Transport: &http.Transport{
+				Proxy:                 http.ProxyFromEnvironment,
+				ResponseHeaderTimeout: 45 * time.Second,
+				IdleConnTimeout:       90 * time.Second,
+				TLSHandshakeTimeout:   15 * time.Second,
+				ExpectContinueTimeout: 1 * time.Second,
+			},
+		},
 		producer: producer,
 	}
 }
@@ -102,30 +113,64 @@ STRICT RULES:
 - Start with exactly: erDiagram
 - No prose, markdown fences, comments, flowchart, graph, or subgraph blocks
 - This is a RELATIONAL DATA MODEL (tables, columns, PKs, FKs) — NEVER infrastructure architecture
-- Target 35–50 entities and 40–70 relationships
-- Include: auth/sessions/roles, core domain entities, join/bridge tables, media/files if relevant, notifications, billing/subscriptions/payments if relevant, audit_logs, timestamps
-- Entity names: single CamelCase or snake_case tokens only — never spaces (Medical_History, not "Medical History")
+- Target EXACTLY 30–40 tables and 35–55 relationships — denser than a normal demo ERD
+- Do NOT emit a small/toy schema (under 30 tables is a failure)
+- Be DETAILED: each table should have 5–12 columns (PK, FKs, domain fields, created_at/updated_at, deleted_at when relevant)
+- Include: auth/sessions/roles, core domain, join/bridge tables, media/files if relevant, notifications, billing/subscriptions/payments if relevant, audit_logs
+- Emit ALL relationship lines FIRST with short labels, THEN full attribute blocks for every entity
+- Put spaces around ops: Users ||--o{ Sessions : has
+- Entity names: single CamelCase or snake_case tokens only — never spaces
+- Column names UNIQUE within each table (never duplicate id)
 - Every relationship MUST appear as a line AND as an FK column on the child table
 - Use cardinality: ||--|| (1:1), ||--o{ (1:N), }o--o{ (N:M)
 - Attribute lines: type name PK|FK|UK — prefer uuid, text, int, bigint, boolean, timestamptz, jsonb, numeric
-- Never stop early — emit all relationships AND full attribute blocks for every entity`
+- Never stop early`
 
 func schemaUserPrompt(prompt string) string {
 	return fmt.Sprintf(
 		`Design the production database schema for: %s
 
-Interpret product names (e.g. Unacademy, Uber, Stripe, Twitter) as the real platform's data model — NOT a UI flow or architecture diagram.
+Interpret product names (e.g. Unacademy, Uber, Stripe, Twitter, Zoho) as the real platform's data model — NOT a UI flow or architecture diagram.
 
-Output ONLY Mermaid starting with "erDiagram". Aim for 35–50 tables with columns and relationships. No flowchart. No other text.`,
+Requirements:
+- 30–40 tables, each with rich columns (5–12 fields: PK/FK/UK + domain + timestamps)
+- 35–55 relationships with short labels
+- Cover auth, core domain, join tables, notifications, billing if relevant, audit_logs
+- Relationship lines first, then every entity attribute block
+- Entity names: no spaces. Column names unique per table
+- Do NOT ask for a table list. Do NOT output a small 10–15 table sketch
+
+Output ONLY Mermaid starting with "erDiagram". Never stop early. No other text.`,
 		prompt,
 	)
 }
 
 // ── TextToDiagramStream ───────────────────────────────────────────────────
 
+// nvidiaModel resolves which NIM model id to use for a pinned NVIDIA provider.
+func (s *AIService) nvidiaModel(provider string) string {
+	switch strings.TrimSpace(strings.ToLower(provider)) {
+	case "nvidia-nemotron":
+		if m := strings.TrimSpace(s.cfg.NvidiaNemotronModel); m != "" {
+			return m
+		}
+		return "nvidia/llama-3.3-nemotron-super-49b-v1.5"
+	case "nvidia-deepseek":
+		if m := strings.TrimSpace(s.cfg.NvidiaDeepSeekModel); m != "" {
+			return m
+		}
+		return "deepseek-ai/deepseek-v4-pro"
+	default:
+		if m := strings.TrimSpace(s.cfg.NvidiaModel); m != "" {
+			return m
+		}
+		return "meta/llama-3.3-70b-instruct"
+	}
+}
+
 // TextToDiagramStream streams Mermaid syntax to w.
 // mode: "architecture" (default flowchart) | "schema" (erDiagram)
-// Chain: Ollama → Groq → GitHub Models → OpenRouter
+// Chain: Ollama → Groq → NVIDIA → GitHub Models → OpenRouter
 // If provider is set, skips straight to that provider.
 func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, provider, mode string, w http.ResponseWriter) error {
 	isSchema := strings.EqualFold(strings.TrimSpace(mode), "schema")
@@ -196,9 +241,24 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 			return err
 		}
 		log.Warn().Str("user_id", userID).Msg("ai: openrouter requested but key not set — falling through")
+	case "nvidia", "nvidia-nemotron", "nvidia-deepseek":
+		if s.cfg.NvidiaAPIKey == "" {
+			log.Warn().Str("user_id", userID).Msg("ai: nvidia requested but NVIDIA_API_KEY not set")
+			return ErrAIUnavailable
+		}
+		model := s.nvidiaModel(provider)
+		log.Info().Str("user_id", userID).Str("provider", provider).Str("model", model).Msg("ai: pinned to NVIDIA NIM")
+		tokens, err := s.nvidiaStream(ctx, userID, systemPrompt, userMessage, model, provider, w)
+		if err == nil {
+			s.publishEvent(userID, prompt, model, provider, tokens)
+			return nil
+		}
+		log.Error().Err(err).Str("user_id", userID).Str("provider", provider).Str("model", model).
+			Msg("ai: pinned NVIDIA failed")
+		return err
 	}
 
-	// ── Auto fallback chain: Ollama → Groq → GitHub Models → OpenRouter ──
+	// ── Auto fallback chain: Ollama → Groq → NVIDIA → GitHub Models → OpenRouter ──
 	if s.cfg.OllamaBaseURL != "" {
 		log.Info().Str("user_id", userID).Str("provider", "ollama").
 			Str("model", ollamaModel).Str("mode", mode).Str("prompt_preview", truncate(prompt, 120)).
@@ -220,9 +280,25 @@ func (s *AIService) TextToDiagramStream(ctx context.Context, prompt, userID, pro
 			return nil
 		}
 		if errors.Is(err, ErrAIQuotaExceeded) {
-			log.Warn().Str("user_id", userID).Msg("ai: Groq quota exceeded — falling back to GitHub Models")
+			log.Warn().Str("user_id", userID).Msg("ai: Groq quota exceeded — falling back to next provider")
 		} else {
-			log.Warn().Err(err).Str("user_id", userID).Msg("ai: Groq failed — falling back to GitHub Models")
+			log.Warn().Err(err).Str("user_id", userID).Msg("ai: Groq failed — falling back to next provider")
+		}
+	}
+
+	if s.cfg.NvidiaAPIKey != "" {
+		model := s.nvidiaModel("nvidia")
+		log.Info().Str("user_id", userID).Str("provider", "nvidia").
+			Str("model", model).Msg("ai: trying NVIDIA NIM")
+		tokens, err := s.nvidiaStream(ctx, userID, systemPrompt, userMessage, model, "nvidia", w)
+		if err == nil {
+			s.publishEvent(userID, prompt, model, "nvidia", tokens)
+			return nil
+		}
+		if errors.Is(err, ErrAIQuotaExceeded) {
+			log.Warn().Str("user_id", userID).Msg("ai: NVIDIA quota exceeded — falling back to GitHub Models")
+		} else {
+			log.Warn().Err(err).Str("user_id", userID).Msg("ai: NVIDIA failed/timed out — falling back to GitHub Models")
 		}
 	}
 
@@ -275,6 +351,12 @@ func (s *AIService) openRouterStream(ctx context.Context, userID, system, user s
 	return s.openAICompatStream(ctx, userID, openRouterURL, s.cfg.OpenRouterAPIKey, s.cfg.OpenRouterModel, "openrouter", system, user, w)
 }
 
+// ── nvidiaStream ──────────────────────────────────────────────────────────
+
+func (s *AIService) nvidiaStream(ctx context.Context, userID, system, user, model, providerName string, w http.ResponseWriter) (int, error) {
+	return s.openAICompatStream(ctx, userID, nvidiaURL, s.cfg.NvidiaAPIKey, model, providerName, system, user, w)
+}
+
 // ── openAICompatStream — shared streaming logic for all OpenAI-compat APIs ─
 
 func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, model, providerName, system, user string, w http.ResponseWriter) (int, error) {
@@ -285,11 +367,17 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 	}
 	messages = append(messages, orMessage{Role: "user", Content: user})
 
+	// NVIDIA hosted NIM commonly caps max_tokens around 4k for Llama-class models.
+	maxTokens := 12000
+	if strings.HasPrefix(providerName, "nvidia") {
+		maxTokens = 4096
+	}
+
 	reqBody, _ := json.Marshal(orRequest{
 		Model:       model,
 		Messages:    messages,
 		Stream:      true,
-		MaxTokens:   12000,
+		MaxTokens:   maxTokens,
 		Temperature: 0.15,
 	})
 

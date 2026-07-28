@@ -309,7 +309,7 @@ export const SCHEMA_PACKS: SchemaPack[] = [
     name: "Auth starter",
     hint: "users · sessions · orgs · memberships",
     aiPrompt:
-      "Design production auth and multi-tenant database schema with 28+ tables including roles, invites, and audit_logs",
+      "Design production auth and multi-tenant database schema with 30–40 tables including roles, invites, and audit_logs",
     tables: [tpl("users"), tpl("sessions"), tpl("organizations"), tpl("memberships")],
     relations: [
       { from: "users", to: "sessions", cardinality: "1:N", label: "has" },
@@ -322,7 +322,7 @@ export const SCHEMA_PACKS: SchemaPack[] = [
     name: "E-commerce",
     hint: "users · products · orders · payments",
     aiPrompt:
-      "Design production e-commerce database schema with catalog, cart, orders, payments, inventory, and audit (28+ tables)",
+      "Design production e-commerce database schema with catalog, cart, orders, payments, inventory, and audit (30–40 tables)",
     tables: [tpl("users"), tpl("products"), tpl("orders"), tpl("order_items"), tpl("payments")],
     relations: [
       { from: "users", to: "orders", cardinality: "1:N", label: "places" },
@@ -336,7 +336,7 @@ export const SCHEMA_PACKS: SchemaPack[] = [
     name: "Edtech / Unacademy",
     hint: "users · courses · lessons · enrollments",
     aiPrompt:
-      "Design Unacademy full production database schema with auth, courses, lessons, enrollments, payments, and audit (28+ tables)",
+      "Design Unacademy full production database schema with auth, courses, lessons, enrollments, payments, and audit (30–40 tables)",
     tables: [tpl("users"), tpl("courses"), tpl("lessons"), tpl("enrollments"), tpl("payments")],
     relations: [
       { from: "users", to: "courses", cardinality: "1:N", label: "teaches" },
@@ -350,7 +350,7 @@ export const SCHEMA_PACKS: SchemaPack[] = [
     name: "SaaS billing",
     hint: "orgs · members · products · payments",
     aiPrompt:
-      "Design multi-tenant SaaS production database schema with orgs, billing, subscriptions, and audit (28+ tables)",
+      "Design multi-tenant SaaS production database schema with orgs, billing, subscriptions, and audit (30–40 tables)",
     tables: [tpl("organizations"), tpl("memberships"), tpl("users"), tpl("products"), tpl("payments")],
     relations: [
       { from: "organizations", to: "memberships", cardinality: "1:N", label: "has" },

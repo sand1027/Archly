@@ -5,10 +5,17 @@ SYSTEM """You are an expert database schema diagram generator for Archly. Output
 STRICT OUTPUT RULES:
 - Start with exactly: erDiagram
 - Never use flowchart, graph, subgraph, or infrastructure nodes
-- Be comprehensive — include auth/sessions, core domain entities, join tables, media/files if relevant, billing if relevant, notifications, audit logs, and timestamps
+- Target 30–40 tables and 35–55 relationships — production depth, not a toy demo
+- Do NOT stop at 10–15 tables — under 30 tables is incomplete
+- Be DETAILED like a real production DB: every table needs 5–12 columns (not just id + one FK)
+- Include auth/sessions/roles, core domain, join/bridge tables, media/files if relevant, billing/subscriptions/payments if relevant, notifications, audit_logs, soft-delete (deleted_at), created_at, updated_at
+- Emit ALL relationship lines FIRST (with short labels), THEN full attribute blocks for EVERY entity
+- Put spaces around cardinality ops: Users ||--o{ Sessions : has   (never Users||--o{Sessions)
+- Entity names: single CamelCase or snake_case token only — never spaces (UserOAuth, Medical_History)
 - Every relationship MUST appear as a relationship line AND as an FK column on the child table
+- Column names must be UNIQUE within each table (never two "id" columns)
 - Use as many entities as needed — never stop early
-- Entity names: single CamelCase or snake_case token only — never spaces (Medical_History, Audit_Log)
+- Prefer types: uuid, text, int, bigint, boolean, timestamptz, jsonb, numeric — never point/geometry
 
 CARDINALITY:
 - ||--|| = one to one
@@ -66,55 +73,43 @@ erDiagram
     SUBSCRIPTIONS ||--o{ PAYMENTS : billed
     NOTIFICATIONS ||--o{ NOTIFICATION_DELIVERIES : delivered_via
     DEVICES ||--o{ NOTIFICATION_DELIVERIES : receives
+    USERS ||--o{ MODERATION_ACTIONS : moderates
+    HASHTAGS ||--o{ TRENDING_TOPICS : trends
+    TWEETS ||--o{ SEARCH_INDEX_JOBS : indexes
     USERS {
         uuid id PK
         text email UK
-        text handle UK
         text password_hash
         boolean is_active
-        boolean is_verified
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     PROFILES {
         uuid id PK
         uuid user_id FK
         text display_name
         text bio
-        text avatar_url
         int followers_count
-        int following_count
-        timestamptz updated_at
     }
     SESSIONS {
         uuid id PK
         uuid user_id FK
         text token_hash UK
-        text ip
-        text user_agent
         timestamptz expires_at
-        timestamptz created_at
     }
     TWEETS {
         uuid id PK
         uuid author_id FK
         uuid reply_to_tweet_id FK
-        uuid quote_tweet_id FK
         text body
-        text lang
         int like_count
-        int retweet_count
-        int view_count
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     FOLLOWS {
         uuid id PK
         uuid follower_id FK
         uuid followee_id FK
-        text status
         timestamptz created_at
     }
     LIKES {
@@ -133,7 +128,6 @@ erDiagram
         uuid id PK
         uuid user_id FK
         uuid tweet_id FK
-        uuid folder_id FK
         timestamptz created_at
     }
     MUTES {
@@ -152,7 +146,6 @@ erDiagram
         uuid id PK
         text tag UK
         int use_count
-        timestamptz created_at
     }
     TWEET_HASHTAGS {
         uuid id PK
@@ -170,17 +163,12 @@ erDiagram
         uuid uploader_id FK
         text kind
         text storage_key
-        text mime_type
-        bigint byte_size
-        timestamptz created_at
     }
     MEDIA_VARIANTS {
         uuid id PK
         uuid media_id FK
         text variant
         text url
-        int width
-        int height
     }
     DIRECT_THREADS {
         uuid id PK
@@ -194,7 +182,6 @@ erDiagram
         uuid thread_id FK
         uuid user_id FK
         timestamptz joined_at
-        timestamptz muted_until
     }
     DIRECT_MESSAGES {
         uuid id PK
@@ -202,38 +189,30 @@ erDiagram
         uuid sender_id FK
         text body
         timestamptz created_at
-        timestamptz deleted_at
     }
     LISTS {
         uuid id PK
         uuid owner_id FK
         text name
-        text description
         boolean is_private
-        timestamptz created_at
-        timestamptz updated_at
     }
     LIST_MEMBERS {
         uuid id PK
         uuid list_id FK
         uuid user_id FK
-        timestamptz created_at
     }
     SPACES {
         uuid id PK
         uuid host_id FK
         text title
         text status
-        timestamptz scheduled_at
         timestamptz started_at
-        timestamptz ended_at
     }
     SPACE_PARTICIPANTS {
         uuid id PK
         uuid space_id FK
         uuid user_id FK
         text role
-        timestamptz joined_at
     }
     NOTIFICATIONS {
         uuid id PK
@@ -241,46 +220,37 @@ erDiagram
         text kind
         jsonb payload
         boolean is_read
-        timestamptz created_at
     }
     DEVICES {
         uuid id PK
         uuid user_id FK
         text platform
         text push_token UK
-        timestamptz last_seen_at
     }
     NOTIFICATION_DELIVERIES {
         uuid id PK
         uuid notification_id FK
         uuid device_id FK
-        text channel
         text status
-        timestamptz sent_at
     }
     REPORTS {
         uuid id PK
         uuid reporter_id FK
         uuid tweet_id FK
-        uuid reported_user_id FK
         text reason
         text status
-        timestamptz created_at
     }
     PLANS {
         uuid id PK
         text code UK
         text name
         numeric price_monthly
-        jsonb features
-        boolean is_active
     }
     SUBSCRIPTIONS {
         uuid id PK
         uuid user_id FK
         uuid plan_id FK
         text status
-        timestamptz current_period_end
         timestamptz created_at
         timestamptz updated_at
     }
@@ -289,56 +259,44 @@ erDiagram
         uuid user_id FK
         uuid subscription_id FK
         numeric amount
-        text currency
         text status
-        text provider_ref
-        timestamptz created_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid actor_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
     }
     TRENDING_TOPICS {
         uuid id PK
         uuid hashtag_id FK
         text region
         int score
-        timestamptz window_start
-        timestamptz window_end
     }
     SEARCH_INDEX_JOBS {
         uuid id PK
         uuid tweet_id FK
         text status
         timestamptz queued_at
-        timestamptz done_at
     }
     RATE_LIMITS {
         uuid id PK
         uuid user_id FK
         text bucket
         int hits
-        timestamptz window_start
     }
     FEATURE_FLAGS {
         uuid id PK
         text key UK
         boolean enabled
         jsonb rules
-        timestamptz updated_at
     }
     MODERATION_ACTIONS {
         uuid id PK
         uuid actor_id FK
-        uuid target_user_id FK
         uuid tweet_id FK
         text action
-        text reason
         timestamptz created_at
     }
 
@@ -349,17 +307,25 @@ erDiagram
     USERS ||--o{ ORGANIZATIONS : owns
     ORGANIZATIONS ||--o{ MEMBERSHIPS : has
     USERS ||--o{ MEMBERSHIPS : joins
+    ORGANIZATIONS ||--o{ PROJECTS : has
+    PROJECTS ||--o{ KNOWLEDGE_BASES : has
+    PROJECTS ||--o{ CONVERSATIONS : contains
     USERS ||--o{ CONVERSATIONS : owns
     ORGANIZATIONS ||--o{ CONVERSATIONS : scopes
     CONVERSATIONS ||--o{ MESSAGES : has
     MESSAGES ||--o{ MESSAGE_PARTS : composed_of
     MESSAGES ||--o{ TOOL_CALLS : triggers
     TOOL_CALLS ||--o{ TOOL_RESULTS : returns
+    KNOWLEDGE_BASES ||--o{ FILES : indexes
     USERS ||--o{ FILES : uploads
     FILES ||--o{ FILE_CHUNKS : split_into
     FILE_CHUNKS ||--o{ EMBEDDINGS : embedded_as
     CONVERSATIONS ||--o{ RETRIEVALS : retrieves
     EMBEDDINGS ||--o{ RETRIEVALS : matched
+    MESSAGES ||--o{ CITATIONS : cites
+    FILE_CHUNKS ||--o{ CITATIONS : sourced
+    PROMPT_TEMPLATES ||--o{ MESSAGES : used_by
+    MODEL_ROUTES ||--o{ MESSAGES : served
     USERS ||--o{ API_KEYS : owns
     ORGANIZATIONS ||--o{ API_KEYS : scopes
     USERS ||--o{ USAGE_EVENTS : generates
@@ -368,42 +334,35 @@ erDiagram
     PLANS ||--o{ SUBSCRIPTIONS : sold_as
     SUBSCRIPTIONS ||--o{ INVOICES : billed
     INVOICES ||--o{ PAYMENTS : paid_by
-    PROMPT_TEMPLATES ||--o{ MESSAGES : used_by
-    MODEL_ROUTES ||--o{ MESSAGES : served
     USERS ||--o{ NOTIFICATIONS : receives
     USERS ||--o{ AUDIT_LOGS : acts
-    ORGANIZATIONS ||--o{ PROJECTS : has
-    PROJECTS ||--o{ CONVERSATIONS : contains
-    PROJECTS ||--o{ KNOWLEDGE_BASES : has
-    KNOWLEDGE_BASES ||--o{ FILES : indexes
-    MESSAGES ||--o{ CITATIONS : cites
-    FILE_CHUNKS ||--o{ CITATIONS : sourced
     USERS ||--o{ FEEDBACK : rates
     MESSAGES ||--o{ FEEDBACK : about
+    MESSAGES ||--o{ SAFETY_FLAGS : flagged
+    ORGANIZATIONS ||--o{ WEBHOOKS : owns
+    WEBHOOKS ||--o{ WEBHOOK_DELIVERIES : delivers
+    USERS ||--o{ MEMORY_ITEMS : remembers
+    ORGANIZATIONS ||--o{ DATA_RETENTION_POLICIES : retains
+    API_KEYS ||--o{ RATE_LIMITS : throttles
     USERS {
         uuid id PK
         text email UK
-        text handle UK
         text password_hash
         boolean is_active
-        boolean is_verified
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     PROFILES {
         uuid id PK
         uuid user_id FK
         text display_name
         text avatar_url
-        timestamptz updated_at
     }
     SESSIONS {
         uuid id PK
         uuid user_id FK
         text token_hash UK
         timestamptz expires_at
-        timestamptz created_at
     }
     ORGANIZATIONS {
         uuid id PK
@@ -418,23 +377,18 @@ erDiagram
         uuid org_id FK
         uuid user_id FK
         text role
-        timestamptz created_at
     }
     PROJECTS {
         uuid id PK
         uuid org_id FK
         text name
         text status
-        timestamptz created_at
-        timestamptz updated_at
     }
     KNOWLEDGE_BASES {
         uuid id PK
         uuid project_id FK
         text name
         text embedding_model
-        timestamptz created_at
-        timestamptz updated_at
     }
     CONVERSATIONS {
         uuid id PK
@@ -442,10 +396,8 @@ erDiagram
         uuid org_id FK
         uuid project_id FK
         text title
-        text model
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     MESSAGES {
         uuid id PK
@@ -454,15 +406,12 @@ erDiagram
         uuid model_route_id FK
         text role
         text content
-        int token_count
-        timestamptz created_at
     }
     MESSAGE_PARTS {
         uuid id PK
         uuid message_id FK
         text kind
         jsonb payload
-        int position
     }
     TOOL_CALLS {
         uuid id PK
@@ -470,59 +419,48 @@ erDiagram
         text tool_name
         jsonb args
         text status
-        timestamptz created_at
     }
     TOOL_RESULTS {
         uuid id PK
         uuid tool_call_id FK
         jsonb result
         boolean is_error
-        timestamptz created_at
     }
     FILES {
         uuid id PK
         uuid user_id FK
         uuid knowledge_base_id FK
         text name
-        text mime_type
         text storage_key
-        bigint byte_size
         text status
-        timestamptz created_at
     }
     FILE_CHUNKS {
         uuid id PK
         uuid file_id FK
         int chunk_index
         text content
-        int token_count
     }
     EMBEDDINGS {
         uuid id PK
         uuid chunk_id FK
         text model
         jsonb vector_ref
-        timestamptz created_at
     }
     RETRIEVALS {
         uuid id PK
         uuid conversation_id FK
         uuid embedding_id FK
         numeric score
-        timestamptz created_at
     }
     CITATIONS {
         uuid id PK
         uuid message_id FK
         uuid chunk_id FK
-        int start_offset
-        int end_offset
     }
     PROMPT_TEMPLATES {
         uuid id PK
         text name UK
         text body
-        jsonb variables
         boolean is_active
     }
     MODEL_ROUTES {
@@ -531,41 +469,33 @@ erDiagram
         text provider
         text model
         int priority
-        boolean is_active
     }
     API_KEYS {
         uuid id PK
         uuid user_id FK
         uuid org_id FK
         text key_hash UK
-        text name
-        timestamptz last_used_at
         timestamptz revoked_at
     }
     USAGE_EVENTS {
         uuid id PK
         uuid user_id FK
         uuid org_id FK
-        text kind
         int input_tokens
         int output_tokens
         numeric cost
-        timestamptz created_at
     }
     PLANS {
         uuid id PK
         text code UK
-        text name
         numeric price_monthly
         int token_quota
-        boolean is_active
     }
     SUBSCRIPTIONS {
         uuid id PK
         uuid org_id FK
         uuid plan_id FK
         text status
-        timestamptz current_period_end
         timestamptz created_at
         timestamptz updated_at
     }
@@ -573,10 +503,7 @@ erDiagram
         uuid id PK
         uuid subscription_id FK
         numeric amount
-        text currency
         text status
-        timestamptz due_at
-        timestamptz created_at
     }
     PAYMENTS {
         uuid id PK
@@ -584,7 +511,6 @@ erDiagram
         numeric amount
         text status
         text provider_ref
-        timestamptz created_at
     }
     NOTIFICATIONS {
         uuid id PK
@@ -592,76 +518,61 @@ erDiagram
         text kind
         jsonb payload
         boolean is_read
-        timestamptz created_at
     }
     FEEDBACK {
         uuid id PK
         uuid user_id FK
         uuid message_id FK
         int rating
-        text comment
-        timestamptz created_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid actor_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
-    }
-    RATE_LIMITS {
-        uuid id PK
-        uuid api_key_id FK
-        text bucket
-        int hits
-        timestamptz window_start
-    }
-    FEATURE_FLAGS {
-        uuid id PK
-        text key UK
-        boolean enabled
-        jsonb rules
-        timestamptz updated_at
     }
     SAFETY_FLAGS {
         uuid id PK
         uuid message_id FK
         text category
         numeric score
-        timestamptz created_at
     }
     MEMORY_ITEMS {
         uuid id PK
         uuid user_id FK
         uuid conversation_id FK
         text content
-        timestamptz created_at
     }
     WEBHOOKS {
         uuid id PK
         uuid org_id FK
         text url
-        text secret_hash
         boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     WEBHOOK_DELIVERIES {
         uuid id PK
         uuid webhook_id FK
         text event
         text status
-        int attempts
-        timestamptz created_at
     }
     DATA_RETENTION_POLICIES {
         uuid id PK
         uuid org_id FK
         int retain_days
         boolean scrub_pii
-        timestamptz updated_at
+    }
+    RATE_LIMITS {
+        uuid id PK
+        uuid api_key_id FK
+        text bucket
+        int hits
+    }
+    FEATURE_FLAGS {
+        uuid id PK
+        text key UK
+        boolean enabled
+        jsonb rules
     }
 
 EXAMPLE 3 — Uber-scale ride sharing:
@@ -671,69 +582,69 @@ erDiagram
     USERS ||--|| DRIVER_PROFILES : as_driver
     USERS ||--o{ VEHICLES : owns
     VEHICLES ||--o{ VEHICLE_DOCUMENTS : has
+    USERS ||--o{ DRIVER_DOCUMENTS : submits
     USERS ||--o{ PAYMENT_METHODS : has
+    CITIES ||--o{ RIDES : operates_in
     USERS ||--o{ RIDES : requests
     USERS ||--o{ RIDES : drives
     VEHICLES ||--o{ RIDES : used_in
     RIDES ||--|| RIDE_FARES : priced_as
     RIDES ||--o{ RIDE_EVENTS : logs
+    RIDES ||--o{ RIDE_STOPS : has
     RIDES ||--o{ LOCATION_PINGS : tracks
     RIDES ||--|| PAYMENTS : paid_by
+    PAYMENT_METHODS ||--o{ PAYMENTS : charges
+    PAYMENTS ||--o{ PAYOUTS : funds
+    USERS ||--o{ PAYOUTS : receives
     RIDES ||--o{ RATINGS : rated
     USERS ||--o{ RATINGS : gives
     USERS ||--o{ RATINGS : receives
     PROMO_CODES ||--o{ PROMO_REDEMPTIONS : redeemed
     USERS ||--o{ PROMO_REDEMPTIONS : uses
     RIDES ||--o{ PROMO_REDEMPTIONS : applied_to
-    USERS ||--o{ NOTIFICATIONS : receives
-    USERS ||--o{ DEVICES : owns
     CITIES ||--o{ SURGE_ZONES : has
     SURGE_ZONES ||--o{ SURGE_MULTIPLIERS : priced
     RIDES ||--o{ SURGE_MULTIPLIERS : affected_by
-    USERS ||--o{ DRIVER_DOCUMENTS : submits
-    USERS ||--o{ PAYOUTS : receives
-    PAYMENTS ||--o{ PAYOUTS : funds
+    CITIES ||--o{ PRICING_RULES : prices
+    USERS ||--o{ FAVORITE_PLACES : saves
+    USERS ||--o{ DEVICES : owns
+    USERS ||--o{ NOTIFICATIONS : receives
     USERS ||--o{ SUPPORT_TICKETS : opens
     RIDES ||--o{ SUPPORT_TICKETS : about
     SUPPORT_TICKETS ||--o{ SUPPORT_MESSAGES : has
     USERS ||--o{ AUDIT_LOGS : acts
-    CITIES ||--o{ RIDES : operates_in
-    USERS ||--o{ FAVORITE_PLACES : saves
-    RIDES ||--o{ RIDE_STOPS : has
-    PAYMENT_METHODS ||--o{ PAYMENTS : charges
+    USERS ||--o{ DRIVER_SHIFTS : works
+    RIDES ||--o{ ETA_ESTIMATES : estimates
+    USERS ||--o{ FRAUD_SIGNALS : flagged
+    RIDES ||--o{ MAP_MATCH_JOBS : matches
+    USERS ||--o{ INVOICES : receives
+    RIDES ||--o{ INVOICES : documents
     USERS {
         uuid id PK
         text email UK
-        text handle UK
         text password_hash
         boolean is_active
-        boolean is_verified
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     SESSIONS {
         uuid id PK
         uuid user_id FK
         text token_hash UK
         timestamptz expires_at
-        timestamptz created_at
     }
     RIDER_PROFILES {
         uuid id PK
         uuid user_id FK
         numeric rating_avg
         int ride_count
-        timestamptz updated_at
     }
     DRIVER_PROFILES {
         uuid id PK
         uuid user_id FK
         text license_number UK
         text status
-        numeric rating_avg
         boolean is_online
-        timestamptz updated_at
     }
     VEHICLES {
         uuid id PK
@@ -741,8 +652,6 @@ erDiagram
         text make
         text model
         text plate UK
-        text color
-        int year
         text status
     }
     VEHICLE_DOCUMENTS {
@@ -750,7 +659,6 @@ erDiagram
         uuid vehicle_id FK
         text doc_type
         text storage_key
-        timestamptz expires_at
         text status
     }
     DRIVER_DOCUMENTS {
@@ -758,7 +666,6 @@ erDiagram
         uuid driver_id FK
         text doc_type
         text storage_key
-        timestamptz expires_at
         text status
     }
     PAYMENT_METHODS {
@@ -766,9 +673,7 @@ erDiagram
         uuid user_id FK
         text brand
         text last4
-        text provider_token
         boolean is_default
-        timestamptz created_at
     }
     CITIES {
         uuid id PK
@@ -782,14 +687,19 @@ erDiagram
         uuid city_id FK
         text name
         jsonb polygon
-        boolean is_active
     }
     SURGE_MULTIPLIERS {
         uuid id PK
         uuid zone_id FK
         uuid ride_id FK
         numeric multiplier
-        timestamptz active_at
+    }
+    PRICING_RULES {
+        uuid id PK
+        uuid city_id FK
+        text vehicle_class
+        numeric base
+        numeric per_km
     }
     RIDES {
         uuid id PK
@@ -798,14 +708,7 @@ erDiagram
         uuid vehicle_id FK
         uuid city_id FK
         text status
-        text pickup_address
-        text dropoff_address
-        numeric pickup_lat
-        numeric pickup_lng
-        numeric dropoff_lat
-        numeric dropoff_lng
         timestamptz requested_at
-        timestamptz completed_at
     }
     RIDE_STOPS {
         uuid id PK
@@ -814,25 +717,19 @@ erDiagram
         text address
         numeric lat
         numeric lng
-        timestamptz arrived_at
     }
     RIDE_FARES {
         uuid id PK
         uuid ride_id FK
         numeric base_fare
-        numeric distance_fare
-        numeric time_fare
         numeric surge_amount
-        numeric tip
         numeric total
-        text currency
     }
     RIDE_EVENTS {
         uuid id PK
         uuid ride_id FK
         text event_type
         jsonb payload
-        timestamptz created_at
     }
     LOCATION_PINGS {
         uuid id PK
@@ -840,9 +737,6 @@ erDiagram
         uuid driver_id FK
         numeric lat
         numeric lng
-        numeric heading
-        numeric speed
-        timestamptz recorded_at
     }
     PAYMENTS {
         uuid id PK
@@ -850,8 +744,6 @@ erDiagram
         uuid payment_method_id FK
         numeric amount
         text status
-        text provider_ref
-        timestamptz created_at
     }
     PAYOUTS {
         uuid id PK
@@ -859,7 +751,6 @@ erDiagram
         uuid payment_id FK
         numeric amount
         text status
-        timestamptz created_at
     }
     RATINGS {
         uuid id PK
@@ -867,16 +758,11 @@ erDiagram
         uuid from_user_id FK
         uuid to_user_id FK
         int score
-        text comment
-        timestamptz created_at
     }
     PROMO_CODES {
         uuid id PK
         text code UK
         numeric amount_off
-        numeric percent_off
-        timestamptz starts_at
-        timestamptz ends_at
         boolean is_active
     }
     PROMO_REDEMPTIONS {
@@ -884,7 +770,6 @@ erDiagram
         uuid promo_id FK
         uuid user_id FK
         uuid ride_id FK
-        timestamptz created_at
     }
     FAVORITE_PLACES {
         uuid id PK
@@ -892,15 +777,12 @@ erDiagram
         text label
         text address
         numeric lat
-        numeric lng
-        timestamptz created_at
     }
     DEVICES {
         uuid id PK
         uuid user_id FK
         text platform
         text push_token UK
-        timestamptz last_seen_at
     }
     NOTIFICATIONS {
         uuid id PK
@@ -908,7 +790,6 @@ erDiagram
         text kind
         jsonb payload
         boolean is_read
-        timestamptz created_at
     }
     SUPPORT_TICKETS {
         uuid id PK
@@ -916,37 +797,31 @@ erDiagram
         uuid ride_id FK
         text subject
         text status
-        timestamptz created_at
     }
     SUPPORT_MESSAGES {
         uuid id PK
         uuid ticket_id FK
         uuid sender_id FK
         text body
-        timestamptz created_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid actor_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
     }
     DRIVER_SHIFTS {
         uuid id PK
         uuid driver_id FK
         timestamptz started_at
         timestamptz ended_at
-        numeric online_hours
     }
     ETA_ESTIMATES {
         uuid id PK
         uuid ride_id FK
         int eta_seconds
         numeric distance_m
-        timestamptz computed_at
     }
     FRAUD_SIGNALS {
         uuid id PK
@@ -954,23 +829,12 @@ erDiagram
         uuid ride_id FK
         text signal
         numeric score
-        timestamptz created_at
-    }
-    PRICING_RULES {
-        uuid id PK
-        uuid city_id FK
-        text vehicle_class
-        numeric base
-        numeric per_km
-        numeric per_min
-        boolean is_active
     }
     MAP_MATCH_JOBS {
         uuid id PK
         uuid ride_id FK
         text status
         timestamptz queued_at
-        timestamptz done_at
     }
     INVOICES {
         uuid id PK
@@ -978,25 +842,21 @@ erDiagram
         uuid ride_id FK
         text invoice_number UK
         numeric amount
-        timestamptz created_at
     }
     FEATURE_FLAGS {
         uuid id PK
         text key UK
         boolean enabled
         jsonb rules
-        timestamptz updated_at
     }
     RATE_LIMITS {
         uuid id PK
         uuid user_id FK
         text bucket
         int hits
-        timestamptz window_start
     }
     WEBHOOKS {
         uuid id PK
-        uuid partner_id FK
         text url
         boolean is_active
         timestamptz created_at
@@ -1007,11 +867,13 @@ EXAMPLE 4 — Netflix video streaming:
 erDiagram
     USERS ||--o{ SESSIONS : has
     USERS ||--o{ PROFILES : has
+    PROFILES ||--|| MATURITY_SETTINGS : configured
     USERS ||--o{ SUBSCRIPTIONS : subscribes
     PLANS ||--o{ SUBSCRIPTIONS : sold_as
     SUBSCRIPTIONS ||--o{ INVOICES : billed
     INVOICES ||--o{ PAYMENTS : paid_by
     USERS ||--o{ PAYMENT_METHODS : has
+    PAYMENT_METHODS ||--o{ PAYMENTS : charges
     TITLES ||--o{ SEASONS : has
     SEASONS ||--o{ EPISODES : has
     TITLES ||--o{ TITLE_GENRES : tagged
@@ -1021,6 +883,7 @@ erDiagram
     TITLES ||--o{ ASSETS : has
     ASSETS ||--o{ ENCODE_JOBS : encodes
     ASSETS ||--o{ MEDIA_VARIANTS : has
+    TITLES ||--o{ SUBTITLES : has
     PROFILES ||--o{ WATCH_HISTORY : watches
     EPISODES ||--o{ WATCH_HISTORY : of
     TITLES ||--o{ WATCH_HISTORY : of_title
@@ -1030,7 +893,6 @@ erDiagram
     TITLES ||--o{ RATINGS : rated
     PROFILES ||--o{ RECOMMENDATIONS : receives
     TITLES ||--o{ RECOMMENDATIONS : suggested
-    TITLES ||--o{ SUBTITLES : has
     DRM_LICENSES ||--o{ PLAYBACK_SESSIONS : authorizes
     PROFILES ||--o{ PLAYBACK_SESSIONS : starts
     EPISODES ||--o{ PLAYBACK_SESSIONS : plays
@@ -1039,32 +901,30 @@ erDiagram
     USERS ||--o{ NOTIFICATIONS : receives
     USERS ||--o{ AUDIT_LOGS : acts
     TITLES ||--o{ SEARCH_DOCUMENTS : indexed_as
-    PROFILES ||--o{ MATURITY_SETTINGS : configured
+    CONTENT_PARTNERS ||--o{ TITLE_RIGHTS : licenses
+    TITLES ||--o{ TITLE_RIGHTS : cleared
+    ASSETS ||--o{ CDN_PURGE_JOBS : purges
+    PROFILES ||--o{ PROFILE_EXPERIMENT_ASSIGNMENTS : assigned
+    AB_EXPERIMENTS ||--o{ PROFILE_EXPERIMENT_ASSIGNMENTS : tests
     USERS {
         uuid id PK
         text email UK
-        text handle UK
         text password_hash
         boolean is_active
-        boolean is_verified
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     SESSIONS {
         uuid id PK
         uuid user_id FK
         text token_hash UK
         timestamptz expires_at
-        timestamptz created_at
     }
     PROFILES {
         uuid id PK
         uuid user_id FK
         text name
-        text avatar_url
         boolean is_kids
-        timestamptz created_at
     }
     MATURITY_SETTINGS {
         uuid id PK
@@ -1075,17 +935,14 @@ erDiagram
     PLANS {
         uuid id PK
         text code UK
-        text name
         numeric price_monthly
         int max_streams
-        boolean is_active
     }
     SUBSCRIPTIONS {
         uuid id PK
         uuid user_id FK
         uuid plan_id FK
         text status
-        timestamptz current_period_end
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1095,15 +952,12 @@ erDiagram
         text brand
         text last4
         boolean is_default
-        timestamptz created_at
     }
     INVOICES {
         uuid id PK
         uuid subscription_id FK
         numeric amount
-        text currency
         text status
-        timestamptz created_at
     }
     PAYMENTS {
         uuid id PK
@@ -1111,15 +965,11 @@ erDiagram
         uuid payment_method_id FK
         numeric amount
         text status
-        text provider_ref
-        timestamptz created_at
     }
     TITLES {
         uuid id PK
         text name
         text kind
-        text synopsis
-        int release_year
         text maturity_rating
         boolean is_original
         timestamptz created_at
@@ -1130,7 +980,6 @@ erDiagram
         uuid title_id FK
         int season_number
         text name
-        timestamptz released_at
     }
     EPISODES {
         uuid id PK
@@ -1138,8 +987,6 @@ erDiagram
         int episode_number
         text name
         int duration_sec
-        text synopsis
-        timestamptz released_at
     }
     GENRES {
         uuid id PK
@@ -1155,13 +1002,11 @@ erDiagram
         uuid id PK
         text name
         text role_primary
-        text bio
     }
     TITLE_CAST {
         uuid id PK
         uuid title_id FK
         uuid person_id FK
-        text character_name
         text credit_role
     }
     ASSETS {
@@ -1170,21 +1015,17 @@ erDiagram
         text kind
         text storage_key
         text status
-        timestamptz created_at
     }
     ENCODE_JOBS {
         uuid id PK
         uuid asset_id FK
         text profile
         text status
-        timestamptz queued_at
-        timestamptz done_at
     }
     MEDIA_VARIANTS {
         uuid id PK
         uuid asset_id FK
         text quality
-        text codec
         text url
         bigint bitrate
     }
@@ -1192,7 +1033,6 @@ erDiagram
         uuid id PK
         uuid title_id FK
         text language
-        text format
         text storage_key
     }
     WATCH_HISTORY {
@@ -1201,29 +1041,23 @@ erDiagram
         uuid title_id FK
         uuid episode_id FK
         int position_sec
-        boolean completed
-        timestamptz watched_at
     }
     MY_LIST {
         uuid id PK
         uuid profile_id FK
         uuid title_id FK
-        timestamptz created_at
     }
     RATINGS {
         uuid id PK
         uuid profile_id FK
         uuid title_id FK
         int score
-        timestamptz created_at
     }
     RECOMMENDATIONS {
         uuid id PK
         uuid profile_id FK
         uuid title_id FK
         numeric score
-        text model
-        timestamptz created_at
     }
     DRM_LICENSES {
         uuid id PK
@@ -1238,16 +1072,12 @@ erDiagram
         uuid device_id FK
         uuid drm_license_id FK
         text status
-        timestamptz started_at
-        timestamptz ended_at
     }
     DEVICES {
         uuid id PK
         uuid user_id FK
         text platform
         text device_name
-        text push_token
-        timestamptz last_seen_at
     }
     NOTIFICATIONS {
         uuid id PK
@@ -1255,35 +1085,29 @@ erDiagram
         text kind
         jsonb payload
         boolean is_read
-        timestamptz created_at
     }
     SEARCH_DOCUMENTS {
         uuid id PK
         uuid title_id FK
         text locale
-        tsvector document
         timestamptz indexed_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid actor_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
     }
     CDN_PURGE_JOBS {
         uuid id PK
         uuid asset_id FK
         text status
         timestamptz queued_at
-        timestamptz done_at
     }
     CONTENT_PARTNERS {
         uuid id PK
         text name UK
-        text contact_email
         boolean is_active
     }
     TITLE_RIGHTS {
@@ -1291,7 +1115,6 @@ erDiagram
         uuid title_id FK
         uuid partner_id FK
         text territory
-        timestamptz starts_at
         timestamptz ends_at
     }
     FEATURE_FLAGS {
@@ -1299,21 +1122,18 @@ erDiagram
         text key UK
         boolean enabled
         jsonb rules
-        timestamptz updated_at
     }
     AB_EXPERIMENTS {
         uuid id PK
         text key UK
         jsonb variants
         boolean is_active
-        timestamptz updated_at
     }
     PROFILE_EXPERIMENT_ASSIGNMENTS {
         uuid id PK
         uuid profile_id FK
         uuid experiment_id FK
         text variant
-        timestamptz assigned_at
     }
 
 EXAMPLE 5 — Stripe-scale payment processing:
@@ -1354,6 +1174,12 @@ erDiagram
     ACCOUNTS ||--o{ TAX_RATES : defines
     INVOICES ||--o{ TAX_AMOUNTS : taxed
     TAX_RATES ||--o{ TAX_AMOUNTS : applies
+    ACCOUNTS ||--o{ IDEMPOTENCY_KEYS : dedupes
+    CHARGES ||--o{ FRAUD_REVIEWS : reviewed
+    ACCOUNTS ||--o{ RADAR_RULES : protects
+    ACCOUNTS ||--o{ COUPONS : offers
+    SUBSCRIPTIONS ||--o{ DISCOUNTS : discounted
+    COUPONS ||--o{ DISCOUNTS : applies
     ACCOUNTS {
         uuid id PK
         text name
@@ -1369,7 +1195,6 @@ erDiagram
         text email UK
         text password_hash
         text role
-        boolean is_active
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1378,27 +1203,21 @@ erDiagram
         uuid user_id FK
         text token_hash UK
         timestamptz expires_at
-        timestamptz created_at
     }
     API_KEYS {
         uuid id PK
         uuid account_id FK
         text key_hash UK
         text mode
-        text name
         timestamptz revoked_at
-        timestamptz created_at
     }
     CUSTOMERS {
         uuid id PK
         uuid account_id FK
         text email
         text name
-        text default_currency
-        jsonb metadata
         timestamptz created_at
         timestamptz updated_at
-        timestamptz deleted_at
     }
     PAYMENT_METHODS {
         uuid id PK
@@ -1407,14 +1226,11 @@ erDiagram
         text brand
         text last4
         text provider_ref UK
-        boolean is_default
-        timestamptz created_at
     }
     PRODUCTS {
         uuid id PK
         uuid account_id FK
         text name
-        text description
         boolean is_active
         timestamptz created_at
         timestamptz updated_at
@@ -1422,19 +1238,15 @@ erDiagram
     PRICES {
         uuid id PK
         uuid product_id FK
-        text nickname
         numeric unit_amount
         text currency
         text interval
-        boolean is_active
     }
     SUBSCRIPTIONS {
         uuid id PK
         uuid customer_id FK
         uuid price_id FK
         text status
-        timestamptz current_period_end
-        timestamptz canceled_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1451,9 +1263,6 @@ erDiagram
         text number UK
         text status
         numeric amount_due
-        text currency
-        timestamptz due_at
-        timestamptz created_at
     }
     INVOICE_LINES {
         uuid id PK
@@ -1467,10 +1276,8 @@ erDiagram
         uuid invoice_id FK
         uuid payment_method_id FK
         numeric amount
-        text currency
         text status
         text provider_ref UK
-        timestamptz created_at
     }
     SETUP_INTENTS {
         uuid id PK
@@ -1478,15 +1285,12 @@ erDiagram
         uuid payment_method_id FK
         text status
         text provider_ref UK
-        timestamptz created_at
     }
     CHARGES {
         uuid id PK
         uuid payment_intent_id FK
         numeric amount
-        text currency
         text status
-        text failure_code
         timestamptz created_at
     }
     REFUNDS {
@@ -1495,7 +1299,6 @@ erDiagram
         numeric amount
         text reason
         text status
-        timestamptz created_at
     }
     DISPUTES {
         uuid id PK
@@ -1504,7 +1307,6 @@ erDiagram
         text reason
         text status
         numeric amount
-        timestamptz created_at
     }
     PAYOUTS {
         uuid id PK
@@ -1512,8 +1314,6 @@ erDiagram
         numeric amount
         text currency
         text status
-        timestamptz arrival_date
-        timestamptz created_at
     }
     BALANCE_TRANSACTIONS {
         uuid id PK
@@ -1523,15 +1323,12 @@ erDiagram
         uuid payout_id FK
         text type
         numeric amount
-        numeric fee
         numeric net
-        timestamptz created_at
     }
     CONNECTED_ACCOUNTS {
         uuid id PK
         uuid platform_account_id FK
         text business_name
-        text country
         text status
         timestamptz created_at
         timestamptz updated_at
@@ -1541,18 +1338,13 @@ erDiagram
         uuid connected_account_id FK
         uuid charge_id FK
         numeric amount
-        text currency
         text status
-        timestamptz created_at
     }
     WEBHOOK_ENDPOINTS {
         uuid id PK
         uuid account_id FK
         text url
-        text secret_hash
         boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     WEBHOOK_EVENTS {
         uuid id PK
@@ -1560,8 +1352,6 @@ erDiagram
         text type
         jsonb payload
         text status
-        int attempts
-        timestamptz created_at
     }
     TAX_RATES {
         uuid id PK
@@ -1569,7 +1359,6 @@ erDiagram
         text display_name
         numeric percentage
         boolean inclusive
-        boolean is_active
     }
     TAX_AMOUNTS {
         uuid id PK
@@ -1581,26 +1370,21 @@ erDiagram
         uuid id PK
         uuid account_id FK
         text key UK
-        text request_hash
         jsonb response
-        timestamptz created_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid account_id FK
         uuid actor_user_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
     }
     FRAUD_REVIEWS {
         uuid id PK
         uuid charge_id FK
         text decision
         numeric score
-        timestamptz created_at
     }
     RADAR_RULES {
         uuid id PK
@@ -1609,35 +1393,18 @@ erDiagram
         jsonb rule
         boolean is_active
     }
-    REPORT_RUNS {
+    COUPONS {
         uuid id PK
         uuid account_id FK
-        text report_type
-        text status
-        text storage_key
-        timestamptz created_at
+        text code UK
+        numeric percent_off
+        boolean is_active
     }
-    FILE_UPLOADS {
+    DISCOUNTS {
         uuid id PK
-        uuid account_id FK
-        text purpose
-        text storage_key
-        text mime_type
-        timestamptz created_at
-    }
-    FEATURE_FLAGS {
-        uuid id PK
-        text key UK
-        boolean enabled
-        jsonb rules
-        timestamptz updated_at
-    }
-    RATE_LIMITS {
-        uuid id PK
-        uuid api_key_id FK
-        text bucket
-        int hits
-        timestamptz window_start
+        uuid subscription_id FK
+        uuid coupon_id FK
+        timestamptz starts_at
     }
     EVENTS {
         uuid id PK
@@ -1646,20 +1413,30 @@ erDiagram
         jsonb data
         timestamptz created_at
     }
-    COUPONS {
+    REPORT_RUNS {
         uuid id PK
         uuid account_id FK
-        text code UK
-        numeric percent_off
-        numeric amount_off
-        boolean is_active
+        text report_type
+        text status
+        text storage_key
     }
-    DISCOUNTS {
+    FILE_UPLOADS {
         uuid id PK
-        uuid subscription_id FK
-        uuid coupon_id FK
-        timestamptz starts_at
-        timestamptz ends_at
+        uuid account_id FK
+        text purpose
+        text storage_key
+    }
+    FEATURE_FLAGS {
+        uuid id PK
+        text key UK
+        boolean enabled
+        jsonb rules
+    }
+    RATE_LIMITS {
+        uuid id PK
+        uuid api_key_id FK
+        text bucket
+        int hits
     }
 
 EXAMPLE 6 — IoT sensor data pipeline (smart city scale):
@@ -1667,15 +1444,18 @@ erDiagram
     ORGANIZATIONS ||--o{ USERS : employs
     USERS ||--o{ SESSIONS : has
     ORGANIZATIONS ||--o{ SITES : owns
+    SITES ||--o{ GATEWAYS : has
     SITES ||--o{ DEVICES : hosts
+    GATEWAYS ||--o{ DEVICES : bridges
     DEVICE_TYPES ||--o{ DEVICES : classifies
     DEVICES ||--o{ DEVICE_CREDENTIALS : authenticates
     DEVICES ||--o{ TELEMETRY_POINTS : emits
     DEVICES ||--o{ DEVICE_COMMANDS : receives
     USERS ||--o{ DEVICE_COMMANDS : issues
-    DEVICES ||--o{ ALERTS : triggers
-    ALERT_RULES ||--o{ ALERTS : matches
+    TELEMETRY_POINTS ||--o{ ANOMALY_EVENTS : flags
     SITES ||--o{ ALERT_RULES : scopes
+    ALERT_RULES ||--o{ ALERTS : matches
+    DEVICES ||--o{ ALERTS : triggers
     ALERTS ||--o{ ALERT_ACKNOWLEDGEMENTS : acked
     USERS ||--o{ ALERT_ACKNOWLEDGEMENTS : acks
     ORGANIZATIONS ||--o{ FIRMWARE_VERSIONS : publishes
@@ -1694,11 +1474,14 @@ erDiagram
     USERS ||--o{ AUDIT_LOGS : acts
     DEVICES ||--o{ MAINTENANCE_TICKETS : needs
     USERS ||--o{ MAINTENANCE_TICKETS : assigns
-    SITES ||--o{ GATEWAYS : has
-    GATEWAYS ||--o{ DEVICES : bridges
-    TELEMETRY_POINTS ||--o{ ANOMALY_EVENTS : flags
     DEVICES ||--o{ DEVICE_TAGS : tagged
     TAGS ||--o{ DEVICE_TAGS : labels
+    ORGANIZATIONS ||--o{ TAGS : defines
+    ORGANIZATIONS ||--o{ DASHBOARDS : has
+    DASHBOARDS ||--o{ DASHBOARD_WIDGETS : contains
+    ORGANIZATIONS ||--o{ DATA_RETENTION_POLICIES : retains
+    ORGANIZATIONS ||--o{ EXPORT_JOBS : exports
+    API_KEYS ||--o{ RATE_LIMITS : throttles
     ORGANIZATIONS {
         uuid id PK
         text name
@@ -1712,7 +1495,6 @@ erDiagram
         text email UK
         text password_hash
         text role
-        boolean is_active
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1721,15 +1503,12 @@ erDiagram
         uuid user_id FK
         text token_hash UK
         timestamptz expires_at
-        timestamptz created_at
     }
     SITES {
         uuid id PK
         uuid org_id FK
         text name
         text timezone
-        numeric lat
-        numeric lng
         boolean is_active
     }
     GATEWAYS {
@@ -1737,7 +1516,6 @@ erDiagram
         uuid site_id FK
         text name
         text protocol
-        text endpoint
         text status
     }
     DEVICE_TYPES {
@@ -1752,9 +1530,7 @@ erDiagram
         uuid gateway_id FK
         uuid device_type_id FK
         text serial UK
-        text name
         text status
-        timestamptz last_seen_at
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1763,24 +1539,22 @@ erDiagram
         uuid device_id FK
         text credential_type
         text secret_hash
-        timestamptz rotated_at
-    }
-    DEVICE_TAGS {
-        uuid id PK
-        uuid device_id FK
-        uuid tag_id FK
     }
     TAGS {
         uuid id PK
         uuid org_id FK
         text name UK
     }
+    DEVICE_TAGS {
+        uuid id PK
+        uuid device_id FK
+        uuid tag_id FK
+    }
     TELEMETRY_POINTS {
         uuid id PK
         uuid device_id FK
         text metric
         numeric value
-        text unit
         timestamptz recorded_at
     }
     ANOMALY_EVENTS {
@@ -1789,7 +1563,6 @@ erDiagram
         uuid device_id FK
         text kind
         numeric score
-        timestamptz created_at
     }
     ALERT_RULES {
         uuid id PK
@@ -1797,24 +1570,20 @@ erDiagram
         text name
         jsonb condition
         text severity
-        boolean is_active
     }
     ALERTS {
         uuid id PK
         uuid device_id FK
         uuid rule_id FK
         text status
-        text severity
         text summary
         timestamptz opened_at
-        timestamptz closed_at
     }
     ALERT_ACKNOWLEDGEMENTS {
         uuid id PK
         uuid alert_id FK
         uuid user_id FK
         text note
-        timestamptz created_at
     }
     DEVICE_COMMANDS {
         uuid id PK
@@ -1823,16 +1592,12 @@ erDiagram
         text command
         jsonb payload
         text status
-        timestamptz created_at
-        timestamptz acked_at
     }
     FIRMWARE_VERSIONS {
         uuid id PK
         uuid org_id FK
         text version UK
         text storage_key
-        text checksum
-        timestamptz published_at
     }
     OTA_JOBS {
         uuid id PK
@@ -1840,7 +1605,6 @@ erDiagram
         uuid firmware_id FK
         text status
         timestamptz queued_at
-        timestamptz done_at
     }
     API_KEYS {
         uuid id PK
@@ -1848,56 +1612,43 @@ erDiagram
         text key_hash UK
         text name
         timestamptz revoked_at
-        timestamptz created_at
     }
     WEBHOOKS {
         uuid id PK
         uuid org_id FK
         text url
-        text secret_hash
         boolean is_active
-        timestamptz created_at
-        timestamptz updated_at
     }
     WEBHOOK_DELIVERIES {
         uuid id PK
         uuid webhook_id FK
         text event
         text status
-        int attempts
-        timestamptz created_at
     }
     NOTIFICATIONS {
         uuid id PK
         uuid user_id FK
         uuid alert_id FK
         text kind
-        jsonb payload
         boolean is_read
-        timestamptz created_at
     }
     BILLING_ACCOUNTS {
         uuid id PK
         uuid org_id FK
         text billing_email
         text currency
-        timestamptz created_at
-        timestamptz updated_at
     }
     PLANS {
         uuid id PK
         text code UK
-        text name
         numeric price_monthly
         int device_quota
-        boolean is_active
     }
     SUBSCRIPTIONS {
         uuid id PK
         uuid billing_account_id FK
         uuid plan_id FK
         text status
-        timestamptz current_period_end
         timestamptz created_at
         timestamptz updated_at
     }
@@ -1905,9 +1656,7 @@ erDiagram
         uuid id PK
         uuid subscription_id FK
         numeric amount
-        text currency
         text status
-        timestamptz created_at
     }
     PAYMENTS {
         uuid id PK
@@ -1915,62 +1664,38 @@ erDiagram
         numeric amount
         text status
         text provider_ref
-        timestamptz created_at
     }
     MAINTENANCE_TICKETS {
         uuid id PK
         uuid device_id FK
         uuid assignee_id FK
         text status
-        text priority
         text summary
-        timestamptz opened_at
-        timestamptz closed_at
     }
     AUDIT_LOGS {
         uuid id PK
         uuid actor_id FK
         text action
-        text entity_type
         uuid entity_id
         jsonb meta
-        timestamptz created_at
     }
     DASHBOARDS {
         uuid id PK
         uuid org_id FK
         text name
         jsonb layout
-        timestamptz created_at
-        timestamptz updated_at
     }
     DASHBOARD_WIDGETS {
         uuid id PK
         uuid dashboard_id FK
         text widget_type
         jsonb config
-        int position
     }
     DATA_RETENTION_POLICIES {
         uuid id PK
         uuid org_id FK
         int telemetry_days
         int alert_days
-        timestamptz updated_at
-    }
-    FEATURE_FLAGS {
-        uuid id PK
-        text key UK
-        boolean enabled
-        jsonb rules
-        timestamptz updated_at
-    }
-    RATE_LIMITS {
-        uuid id PK
-        uuid api_key_id FK
-        text bucket
-        int hits
-        timestamptz window_start
     }
     EXPORT_JOBS {
         uuid id PK
@@ -1978,7 +1703,18 @@ erDiagram
         text kind
         text status
         text storage_key
-        timestamptz created_at
+    }
+    FEATURE_FLAGS {
+        uuid id PK
+        text key UK
+        boolean enabled
+        jsonb rules
+    }
+    RATE_LIMITS {
+        uuid id PK
+        uuid api_key_id FK
+        text bucket
+        int hits
     }
 """
 

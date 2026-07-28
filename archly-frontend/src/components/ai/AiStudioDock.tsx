@@ -58,10 +58,10 @@ const GEN_PROMPTS_ARCH = [
 ];
 
 const GEN_PROMPTS_SCHEMA = [
-  "Design Unacademy full production database schema with auth, courses, payments, and audit",
-  "Design Stripe-scale payments production database schema (28+ tables)",
-  "Design Uber ride-sharing full production database schema",
-  "Design multi-tenant SaaS production database schema with billing and audit",
+  "Design Unacademy production database schema (30–40 tables) with auth, courses, payments, audit",
+  "Design Stripe-scale payments production database schema (30–40 tables)",
+  "Design Uber ride-sharing production database schema (30–40 tables)",
+  "Design multi-tenant SaaS production database schema (30–40 tables) with billing and audit",
 ];
 
 const CHAT_SUGGESTIONS = [

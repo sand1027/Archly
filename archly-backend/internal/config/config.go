@@ -43,6 +43,12 @@ type Config struct {
 	OpenRouterAPIKey string
 	OpenRouterModel  string
 
+	// AI — NVIDIA NIM (integrate.api.nvidia.com)
+	NvidiaAPIKey         string
+	NvidiaModel          string // default: meta/llama-3.3-70b-instruct
+	NvidiaNemotronModel  string
+	NvidiaDeepSeekModel  string
+
 	// AI — Ollama (local, highest priority when set)
 	OllamaBaseURL     string
 	OllamaModel       string // architecture (archly-architect Modelfile)
@@ -72,6 +78,10 @@ func Load() (*Config, error) {
 		GitHubModelsModel:    getEnv("GITHUB_MODELS_MODEL", "gpt-4o-mini"),
 		OpenRouterAPIKey:     getEnv("OPENROUTER_API_KEY", ""),
 		OpenRouterModel:      getEnv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash:free"),
+		NvidiaAPIKey:         getEnv("NVIDIA_API_KEY", ""),
+		NvidiaModel:          getEnv("NVIDIA_MODEL", "meta/llama-3.3-70b-instruct"),
+		NvidiaNemotronModel:  getEnv("NVIDIA_NEMOTRON_MODEL", "nvidia/llama-3.3-nemotron-super-49b-v1.5"),
+		NvidiaDeepSeekModel:  getEnv("NVIDIA_DEEPSEEK_MODEL", "deepseek-ai/deepseek-v4-pro"),
 		OllamaBaseURL:        getEnv("OLLAMA_BASE_URL", ""),
 		OllamaModel:          getEnv("OLLAMA_MODEL", "archly-architect"),
 		OllamaSchemaModel:    getEnv("OLLAMA_SCHEMA_MODEL", "archly-schema"),

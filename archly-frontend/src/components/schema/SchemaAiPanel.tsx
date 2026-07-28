@@ -143,8 +143,8 @@ export default function SchemaAiPanel({
           Schema AI
         </div>
         <p style={{ margin: 0, fontSize: 11, color: "var(--pd-text-subtle)", lineHeight: 1.4 }}>
-          Asks for full production ERDs (dozens of tables). “Add a payments table…” merges into
-          an existing schema and wires FKs.
+          Targets 30–40 tables with relationships. “Add a payments table…” merges into an
+          existing schema and wires FKs.
         </p>
       </div>
 

@@ -12,22 +12,22 @@ export const SCHEMA_EXAMPLES = [
   {
     id: "unacademy",
     label: "Unacademy",
-    prompt: "Design Unacademy full production database schema with auth, courses, payments, and audit",
+    prompt: "Design Unacademy production database schema (30–40 tables) with auth, courses, payments, audit",
   },
   {
     id: "stripe",
     label: "Stripe",
-    prompt: "Design Stripe-scale payments production database schema (28+ tables)",
+    prompt: "Design Stripe-scale payments production database schema (30–40 tables)",
   },
   {
     id: "uber",
     label: "Uber",
-    prompt: "Design Uber ride-sharing full production database schema",
+    prompt: "Design Uber ride-sharing production database schema (30–40 tables)",
   },
   {
     id: "saas",
     label: "SaaS",
-    prompt: "Design multi-tenant SaaS production database schema with billing and audit",
+    prompt: "Design multi-tenant SaaS production database schema (30–40 tables) with billing and audit",
   },
 ] as const;
 
@@ -131,7 +131,7 @@ export default function SchemaEmptyHero({ visible, onGenerate, onOpenAi }: Props
             onKeyDown={(e) => {
               if (e.key === "Enter") submit(prompt);
             }}
-            placeholder="e.g. Design Unacademy full production database schema…"
+            placeholder="e.g. Design Zoho CRM production database schema (30–40 tables)…"
             className="pd-input"
             style={{
               flex: 1,

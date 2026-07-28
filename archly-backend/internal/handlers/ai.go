@@ -69,8 +69,13 @@ func (h *AIHandler) TextToDiagramStream(w http.ResponseWriter, r *http.Request) 
 				"AI quota exceeded — daily limit reached. Please try again tomorrow or switch providers.")
 			return
 		}
-		// At this point we may have already written SSE headers — just log
-		log.Error().Err(err).Str("user_id", uid).Msg("handler: TextToDiagramStream error after streaming started")
+		// If SSE already started we can't write JSON — client will use partial Mermaid if any.
+		if w.Header().Get("Content-Type") != "" {
+			log.Error().Err(err).Str("user_id", uid).Msg("handler: TextToDiagramStream error after streaming started")
+			return
+		}
+		log.Error().Err(err).Str("user_id", uid).Msg("handler: TextToDiagramStream error")
+		InternalError(w, err)
 		return
 	}
 }

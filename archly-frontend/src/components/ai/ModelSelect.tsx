@@ -29,7 +29,7 @@ interface ModelSelectProps {
 
 const ROW_HEIGHT = 34;
 const MENU_PADDING = 10;
-const MENU_WIDTH = 268;
+const MENU_WIDTH = 300;
 const GAP = 6;
 
 export default function ModelSelect({

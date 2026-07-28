@@ -95,27 +95,28 @@ Output ONLY Mermaid starting with "flowchart TD". Aim for 40–55 infrastructure
 
 // schemaSystemPrompt — used for cloud providers (no Modelfile).
 // Ollama schema mode uses archly-schema Modelfile SYSTEM instead (empty override).
-const schemaSystemPrompt = `You are an expert database schema diagram generator for Archly. Output ONLY valid Mermaid erDiagram syntax — no prose, no markdown fences, no backticks, no explanations before or after.
+// Mirrors diagramSystemPrompt structure for relational ERDs.
+const schemaSystemPrompt = `You are an expert database schema designer. Output ONLY Mermaid erDiagram syntax for a production RELATIONAL DATA MODEL.
 
-STRICT OUTPUT RULES:
+STRICT RULES:
 - Start with exactly: erDiagram
-- Never use flowchart, graph, or subgraph blocks
+- No prose, markdown fences, comments, flowchart, graph, or subgraph blocks
 - This is a RELATIONAL DATA MODEL (tables, columns, PKs, FKs) — NEVER infrastructure architecture
-- Be comprehensive — include auth, core domain entities, join tables, billing if relevant, and audit timestamps
-- Target 12–25 entities for a real product system
+- Target 35–50 entities and 40–70 relationships
+- Include: auth/sessions/roles, core domain entities, join/bridge tables, media/files if relevant, notifications, billing/subscriptions/payments if relevant, audit_logs, timestamps
+- Entity names: single CamelCase or snake_case tokens only — never spaces (Medical_History, not "Medical History")
 - Every relationship MUST appear as a line AND as an FK column on the child table
 - Use cardinality: ||--|| (1:1), ||--o{ (1:N), }o--o{ (N:M)
-- Attribute lines: <type> <name> <PK|FK|UK>
-- Prefer types: uuid, text, int, bigint, boolean, timestamptz, jsonb, numeric
-- Never stop early — emit relationships AND full attribute blocks for every entity`
+- Attribute lines: type name PK|FK|UK — prefer uuid, text, int, bigint, boolean, timestamptz, jsonb, numeric
+- Never stop early — emit all relationships AND full attribute blocks for every entity`
 
 func schemaUserPrompt(prompt string) string {
 	return fmt.Sprintf(
 		`Design the production database schema for: %s
 
-Interpret product names (e.g. Unacademy, Uber, Stripe, Twitter, Netflix) as the real platform's data model — invent the full relational schema yourself (tables, columns, PKs, FKs, relationships). Do NOT ask for a table list. Do NOT output architecture/flowchart.
+Interpret product names (e.g. Unacademy, Uber, Stripe, Twitter) as the real platform's data model — NOT a UI flow or architecture diagram.
 
-Output ONLY Mermaid starting with "erDiagram". Be comprehensive — never stop early. No other text.`,
+Output ONLY Mermaid starting with "erDiagram". Aim for 35–50 tables with columns and relationships. No flowchart. No other text.`,
 		prompt,
 	)
 }
@@ -288,7 +289,7 @@ func (s *AIService) openAICompatStream(ctx context.Context, userID, url, token, 
 		Model:       model,
 		Messages:    messages,
 		Stream:      true,
-		MaxTokens:   8000,
+		MaxTokens:   12000,
 		Temperature: 0.15,
 	})
 

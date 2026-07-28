@@ -34,28 +34,76 @@ const CARD_MAP: Record<string, SchemaCardinality> = {
   "}o--|{": "N:M",
 };
 
+const REL_OPS = Object.keys(CARD_MAP)
+  .sort((a, b) => b.length - a.length)
+  .map((op) => op.replace(/[|{}.]/g, "\\$&"))
+  .join("|");
+
 function normalizeName(raw: string): string {
-  return raw.trim().replace(/^["']|["']$/g, "");
+  return raw
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_");
+}
+
+/** Entity token: quoted name, or CamelCase / snake_case, or spaced words (normalized later). */
+const ENTITY_NAME =
+  `(?:"([^"]+)"|'([^']+)'|([A-Za-z_][\\w]*(?:\\s+[A-Za-z_][\\w]*)*))`;
+
+function entityFromMatch(a?: string, b?: string, c?: string): string {
+  return normalizeName(a || b || c || "");
 }
 
 function tableId(name: string): string {
   return `tbl-${name.toLowerCase().replace(/[^a-z0-9_]/g, "_")}`;
 }
 
+/** Collapse spaces inside cardinality operators (SSE / tokenizer artifacts). */
+function normalizeErText(raw: string): string {
+  let text = raw.trim();
+  text = text.replace(/^```(?:mermaid)?\s*/i, "").replace(/```$/i, "").trim();
+
+  // er + Diagram split across tokens with a newline still counts
+  text = text.replace(/er\s*\n\s*Diagram/gi, "erDiagram");
+
+  // Only safe, explicit spaced-operator fixes (never char-by-char — `|` breaks RegExp).
+  const spacedOps: [RegExp, string][] = [
+    [/\|\|\s*--\s*\|\|/g, "||--||"],
+    [/\|\|\s*--\s*o\s*\|/g, "||--o|"],
+    [/\|o\s*--\s*\|\|/g, "|o--||"],
+    [/\|\|\s*--\s*\|\s*\{/g, "||--|{"],
+    [/\|\|\s*--\s*o\s*\{/g, "||--o{"],
+    [/\}\|\s*--\s*\|\|/g, "}|--||"],
+    [/\}o\s*--\s*\|\|/g, "}o--||"],
+    [/\}\|\s*--\s*\|\s*\{/g, "}|--|{"],
+    [/\}o\s*--\s*o\s*\{/g, "}o--o{"],
+    [/\}\|\s*--\s*o\s*\{/g, "}|--o{"],
+    [/\}o\s*--\s*\|\s*\{/g, "}o--|{"],
+  ];
+  for (const [re, op] of spacedOps) {
+    text = text.replace(re, op);
+  }
+
+  return text;
+}
+
 function parseColumnLine(line: string): SchemaColumn | null {
-  // Examples:
-  //   uuid id PK
-  //   string email UK
-  //   int user_id FK
-  //   timestamptz created_at
-  const cleaned = line.trim().replace(/,$/, "");
+  let cleaned = line.trim().replace(/,$/, "");
   if (!cleaned || cleaned.startsWith("%%")) return null;
+
+  // Repair common tokenizer splits: "json b" → jsonb, "time stamptz" leftovers
+  cleaned = cleaned
+    .replace(/\bjson\s+b\b/gi, "jsonb")
+    .replace(/\btime\s*stamptz\b/gi, "timestamptz");
 
   const parts = cleaned.split(/\s+/);
   if (parts.length < 2) return null;
 
   const type = parts[0];
   const name = parts[1];
+  if (!name || /^(PK|FK|UK)$/i.test(name)) return null;
+
   const flags = parts.slice(2).map((p) => p.toUpperCase());
 
   const col: SchemaColumn = {
@@ -75,18 +123,19 @@ function parseColumnLine(line: string): SchemaColumn | null {
 
 /**
  * Convert erDiagram Mermaid into schema graph.
+ *
+ * IMPORTANT: relationship operators like `||--o{` contain `{` and must be
+ * stripped BEFORE entity-block parsing, otherwise `o{ ... }` eats real tables.
  */
 export function convertErDiagramToSchema(
   mermaid: string
 ): ErConvertResult | ErConvertError {
-  let text = mermaid.trim();
-  text = text.replace(/^```(?:mermaid)?\s*/i, "").replace(/```$/i, "").trim();
+  let text = normalizeErText(mermaid);
 
   if (!/erDiagram/i.test(text)) {
     return { error: "Not an erDiagram — expected Mermaid starting with erDiagram" };
   }
 
-  // Drop header
   text = text.replace(/^\s*erDiagram\s*/i, "");
 
   const tables = new Map<string, SchemaColumn[]>();
@@ -97,38 +146,52 @@ export function convertErDiagramToSchema(
     label: string;
   }[] = [];
 
-  // Entity blocks: USERS { ... }
-  const blockRe = /([A-Za-z_][\w]*)\s*\{([^}]*)\}/g;
+  // 1) Parse + strip relationships FIRST (ops contain `{` / `}`).
+  const relRe = new RegExp(
+    `${ENTITY_NAME}\\s+(${REL_OPS})\\s+${ENTITY_NAME}\\s*(?::\\s*["']?([^"'\\n]*)["']?)?`,
+    "g"
+  );
+
+  text = text.replace(
+    relRe,
+    (
+      _full,
+      fromQ,
+      fromSq,
+      fromBare,
+      op,
+      toQ,
+      toSq,
+      toBare,
+      labelRaw
+    ) => {
+      const from = entityFromMatch(fromQ, fromSq, fromBare);
+      const to = entityFromMatch(toQ, toSq, toBare);
+      if (!from || !to) return _full;
+      const label = String(labelRaw ?? "").trim() || "relates";
+      const card = CARD_MAP[op] ?? "1:N";
+      relations.push({ from, to, card, label });
+      if (!tables.has(from)) tables.set(from, []);
+      if (!tables.has(to)) tables.set(to, []);
+      return "\n";
+    }
+  );
+
+  // 2) Entity attribute blocks — safe now that `||--o{` is gone.
+  const blockRe = new RegExp(`${ENTITY_NAME}\\s*\\{([^}]*)\\}`, "g");
   let m: RegExpExecArray | null;
   while ((m = blockRe.exec(text)) !== null) {
-    const name = normalizeName(m[1]);
-    const body = m[2];
+    const name = entityFromMatch(m[1], m[2], m[3]);
+    // Skip operator debris
+    if (name.length < 2 || name === "o") continue;
+
     const cols: SchemaColumn[] = [];
-    for (const line of body.split("\n")) {
+    for (const line of m[4].split("\n")) {
       const col = parseColumnLine(line);
       if (col) cols.push(col);
     }
-    tables.set(name, cols.length ? cols : tables.get(name) ?? []);
-  }
-
-  // Strip blocks so relation lines are easier to parse
-  const withoutBlocks = text.replace(blockRe, "\n");
-
-  // Relations: A ||--o{ B : "label"
-  const relRe =
-    /([A-Za-z_][\w]*)\s+(\|\|--\|\||\|\|--o\||\|o--\|\||\|\|--\|\{|\|\|--o\{|\}\|--\|\||\}o--\|\||\}\|--\|\{|\}o--o\{|\}\|--o\{|\}o--\|\{)\s+([A-Za-z_][\w]*)\s*(?::\s*["']?([^"'\n]*)["']?)?/g;
-
-  while ((m = relRe.exec(withoutBlocks)) !== null) {
-    const from = normalizeName(m[1]);
-    const op = m[2];
-    const to = normalizeName(m[3]);
-    const label = (m[4] ?? "").trim() || "relates";
-    const card = CARD_MAP[op] ?? "1:N";
-
-    if (!tables.has(from)) tables.set(from, []);
-    if (!tables.has(to)) tables.set(to, []);
-
-    relations.push({ from, to, card, label });
+    const prev = tables.get(name) ?? [];
+    tables.set(name, cols.length ? cols : prev);
   }
 
   if (tables.size === 0) {
@@ -152,21 +215,17 @@ export function convertErDiagramToSchema(
     );
     if (existing) {
       existing.fk = { table: parent, column: "id" };
-    } else {
-      const hasFk = cols.some((c) => c.fk);
-      if (!hasFk) {
-        cols.push({
-          name: `${parent.toLowerCase()}_id`,
-          type: "uuid",
-          fk: { table: parent, column: "id" },
-          nullable: false,
-        });
-        tables.set(child, cols);
-      }
+    } else if (!cols.some((c) => c.fk)) {
+      cols.push({
+        name: `${parent.toLowerCase()}_id`,
+        type: "uuid",
+        fk: { table: parent, column: "id" },
+        nullable: false,
+      });
+      tables.set(child, cols);
     }
   }
 
-  // Ensure every table has at least an id PK
   for (const [name, cols] of tables) {
     if (!cols.some((c) => c.pk)) {
       tables.set(name, [
@@ -176,7 +235,6 @@ export function convertErDiagramToSchema(
     }
   }
 
-  // Layout in a grid
   const names = [...tables.keys()];
   const colsPerRow = Math.ceil(Math.sqrt(names.length));
   const nodes: SchemaNode[] = names.map((name, i) => {
@@ -215,7 +273,8 @@ export function convertErDiagramToSchema(
 /** Pull erDiagram from mixed LLM output. */
 export function extractErDiagram(raw: string): string | null {
   const fenced = raw.match(/```(?:mermaid)?\s*([\s\S]*?)```/i);
-  const body = (fenced?.[1] ?? raw).trim();
+  let body = (fenced?.[1] ?? raw).trim();
+  body = body.replace(/er\s*\n\s*Diagram/gi, "erDiagram");
   const idx = body.search(/erDiagram/i);
   if (idx < 0) return null;
   return body.slice(idx).trim();

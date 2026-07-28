@@ -90,5 +90,5 @@ ${serviceLines.join("\n")}
 Connections:
 ${edgeLines.length ? edgeLines.join("\n") : "(none)"}
 
-Infer realistic tables, columns (PK/FK/UK), and relationships. Cover auth/users, core domain entities, join tables, and audit timestamps. Output ONLY Mermaid erDiagram — not a flowchart.`;
+Build a production-scale ERD (aim 28–45 tables, 35–70 relationships). Cover auth/sessions/roles, core domain, join tables, media/files if relevant, notifications, billing if relevant, and audit_logs. Entity names: no spaces. Output ONLY Mermaid erDiagram — not a flowchart.`;
 }

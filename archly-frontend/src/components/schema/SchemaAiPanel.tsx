@@ -143,8 +143,8 @@ export default function SchemaAiPanel({
           Schema AI
         </div>
         <p style={{ margin: 0, fontSize: 11, color: "var(--pd-text-subtle)", lineHeight: 1.4 }}>
-          Full schemas replace the canvas. Prompts like “Add a payments table…” merge into your
-          existing ERD and wire FK connections.
+          Asks for full production ERDs (dozens of tables). “Add a payments table…” merges into
+          an existing schema and wires FKs.
         </p>
       </div>
 

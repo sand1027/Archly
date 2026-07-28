@@ -83,8 +83,9 @@ Headless client for generate / export / session management against the same API:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/sand1027/Archly/main/archly-cli/install.sh | bash
-# or: brew install sand1027/archly/archly --HEAD
-# or: brew tap sand1027/tap && brew install archly  (after homebrew-tap repo is published)
+# or Homebrew:
+#   brew tap sand1027/archly https://github.com/sand1027/Archly
+#   brew trust sand1027/archly && brew install archly --HEAD
 
 export PATH="$HOME/.local/bin:$PATH"
 export ARCHLY_API_URL=http://localhost:8080

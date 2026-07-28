@@ -31,14 +31,8 @@ git commit -m "chore(cli): bump Homebrew formula to v0.1.0"
 
 ## Install without a separate tap repo
 
-From the main Archly repo (formula at `Formula/archly.rb`):
-
 ```bash
-brew install sand1027/archly/archly
-```
-
-Before the first release with binaries:
-
-```bash
-brew install sand1027/archly/archly --HEAD
+brew tap sand1027/archly https://github.com/sand1027/Archly
+brew trust sand1027/archly
+brew install archly --HEAD
 ```

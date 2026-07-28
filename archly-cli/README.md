@@ -17,18 +17,25 @@ archly version
 **Homebrew** (macOS / Linux):
 
 ```bash
-# Short path (after you publish github.com/sand1027/homebrew-tap — see homebrew-tap/README.md)
-brew tap sand1027/tap
-brew install archly
-
-# Or directly from this repo (works today)
-brew install sand1027/archly/archly --HEAD
+brew tap sand1027/archly https://github.com/sand1027/Archly
+brew trust sand1027/archly
+brew install archly --HEAD
+archly version
 ```
+
+> Homebrew looks for a repo named `homebrew-archly` by default. Point the tap at your main Archly repo with the full GitHub URL above.
 
 After the first release (`v0.1.0`) and running `scripts/bump-brew-formula.sh`:
 
 ```bash
-brew install sand1027/archly/archly   # stable binary, no Go required
+brew install archly   # stable binary, no Go required
+```
+
+**Shorter path (optional):** publish `homebrew-tap/` as `github.com/sand1027/homebrew-tap`, then:
+
+```bash
+brew tap sand1027/tap
+brew install archly
 ```
 
 **With Go installed:**

@@ -22,7 +22,6 @@ networks:
 volumes:
   zookeeper_data:
   kafka_data:
-  archly_cli_home:
 
 services:
 
@@ -93,8 +92,7 @@ services:
     networks:
       - backend
 
-  # ── Go API ────────────────────────────────────────────────────────────
-  api:
+  # ── Go API ────────────────────────────────────────────────────────────  api:
     build:
       context: .
       dockerfile: Dockerfile
@@ -130,25 +128,3 @@ services:
     networks:
       - backend        # reaches postgres, redis, kafka
       - proxy          # reachable by Nginx Proxy Manager
-
-  # ── Archly CLI ────────────────────────────────────────────────────────
-  cli:
-    build:
-      context: ../archly-cli
-      dockerfile: Dockerfile
-      args:
-        VERSION: ${ARCHLY_CLI_VERSION:-0.1.0-server}
-    image: archly-cli:server
-    container_name: archly-cli
-    restart: unless-stopped
-    depends_on:
-      - api
-    environment:
-      ARCHLY_API_URL: http://archly-api:8081
-      ARCHLY_APP_URL: https://archly.sbs
-      ARCHLY_PROVIDER: ${ARCHLY_PROVIDER:-}
-      ARCHLY_TOKEN: ${ARCHLY_TOKEN:-}
-    volumes:
-      - archly_cli_home:/home/archly/.archly
-    networks:
-      - backend

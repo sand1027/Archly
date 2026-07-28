@@ -86,7 +86,7 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command: >
       "go install github.com/pressly/goose/v3/cmd/goose@v3.21.1 &&
-      /root/go/bin/goose -dir /migrations postgres
+      /go/bin/goose -dir /migrations postgres
       '${DATABASE_URL}' up"
     env_file: .env
     networks:
@@ -106,8 +106,22 @@ services:
     env_file: .env
     environment:
       PORT: 8081
+      ENVIRONMENT: production
       KAFKA_BROKERS: archly-kafka:9092
       CORS_ORIGINS: "https://archly.sbs,https://www.archly.sbs"
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+      GITHUB_MODELS_TOKEN: ${GITHUB_MODELS_TOKEN:-}
+      GITHUB_MODELS_MODEL: ${GITHUB_MODELS_MODEL:-gpt-4o-mini}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-arcee-ai/trinity-large-preview:free}
+      NVIDIA_API_KEY: ${NVIDIA_API_KEY:-}
+      NVIDIA_MODEL: ${NVIDIA_MODEL:-meta/llama-3.3-70b-instruct}
+      NVIDIA_NEMOTRON_MODEL: ${NVIDIA_NEMOTRON_MODEL:-nvidia/llama-3.3-nemotron-super-49b-v1.5}
+      NVIDIA_DEEPSEEK_MODEL: ${NVIDIA_DEEPSEEK_MODEL:-deepseek-ai/deepseek-v4-pro}
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-archly-architect}
+      OLLAMA_SCHEMA_MODEL: ${OLLAMA_SCHEMA_MODEL:-archly-schema}
     expose:
       - "8081"
     ports:
